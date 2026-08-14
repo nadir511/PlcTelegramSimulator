@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Connection &amp; Session Management</title>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&amp;family=JetBrains+Mono:wght@400&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "secondary-fixed": "#bff365",
+                        "surface-variant": "#353534",
+                        "background": "#131313",
+                        "error-container": "#93000a",
+                        "tertiary-fixed-dim": "#ffb786",
+                        "on-tertiary-fixed-variant": "#723600",
+                        "outline-variant": "#424754",
+                        "on-background": "#e5e2e1",
+                        "primary-container": "#4d8eff",
+                        "surface-dim": "#131313",
+                        "inverse-on-surface": "#313030",
+                        "surface-container-high": "#2a2a2a",
+                        "tertiary-container": "#df7412",
+                        "tertiary": "#ffb786",
+                        "on-primary-fixed": "#001a42",
+                        "inverse-surface": "#e5e2e1",
+                        "on-secondary-fixed": "#131f00",
+                        "outline": "#8c909f",
+                        "surface-container": "#201f1f",
+                        "on-tertiary": "#502400",
+                        "secondary": "#a4d64c",
+                        "on-tertiary-fixed": "#311400",
+                        "on-secondary": "#233600",
+                        "primary-fixed": "#d8e2ff",
+                        "on-surface-variant": "#c2c6d6",
+                        "on-tertiary-container": "#461f00",
+                        "on-primary-container": "#00285d",
+                        "surface-bright": "#393939",
+                        "on-primary-fixed-variant": "#004395",
+                        "error": "#ffb4ab",
+                        "primary": "#adc6ff",
+                        "surface-tint": "#adc6ff",
+                        "on-secondary-fixed-variant": "#354e00",
+                        "secondary-container": "#719e13",
+                        "surface-container-low": "#1c1b1b",
+                        "surface-container-highest": "#353534",
+                        "on-secondary-container": "#1e2f00",
+                        "secondary-fixed-dim": "#a4d64c",
+                        "surface-container-lowest": "#0e0e0e",
+                        "on-primary": "#002e6a",
+                        "on-surface": "#e5e2e1",
+                        "tertiary-fixed": "#ffdcc6",
+                        "inverse-primary": "#005ac2",
+                        "primary-fixed-dim": "#adc6ff",
+                        "on-error": "#690005",
+                        "on-error-container": "#ffdad6",
+                        "surface": "#131313"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "gutter": "12px",
+                        "container-padding": "16px",
+                        "canvas-grid": "20px",
+                        "unit": "4px"
+                    },
+                    "fontFamily": {
+                        "display-lg": ["Inter"],
+                        "body-md": ["Inter"],
+                        "label-xs": ["Inter"],
+                        "data-mono": ["JetBrains Mono"],
+                        "headline-md": ["Inter"]
+                    },
+                    "fontSize": {
+                        "display-lg": ["32px", { "lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "label-xs": ["11px", { "lineHeight": "16px", "fontWeight": "700" }],
+                        "data-mono": ["13px", { "lineHeight": "18px", "fontWeight": "400" }],
+                        "headline-md": ["20px", { "lineHeight": "28px", "fontWeight": "600" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .grid-bg {
+            background-image: radial-gradient(#ffffff10 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+        .glow-error {
+            box-shadow: 0 0 8px rgba(255, 180, 171, 0.3);
+        }
+        .glow-success {
+            box-shadow: 0 0 8px rgba(164, 214, 76, 0.3);
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body-md min-h-screen flex overflow-hidden">
+<!-- SideNavBar -->
+<nav class="docked left-0 h-full w-20 flex flex-col items-center py-container-padding bg-surface-container dark:bg-surface-container border-r border-outline-variant z-20 shrink-0">
+<div class="mb-8">
+<img alt="System Operator" class="w-10 h-10 rounded-full bg-surface-variant object-cover" data-alt="A small, stylized avatar image or icon representing a system operator in a high-tech, industrial setting, featuring sharp angles and a dark color palette with subtle neon accents." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCFZngMseHpOKsuRfNsI_3dmiUzpLXzihxy7M_NoRVc_cpYRhaUPpecjC5LW6y56clyLH5k9WdymvMdgB6c3Us-biX7JKUL9dpzVIadxE5aY5Mr75AwBGJQT4zWzzgPdby34rytosY4Id5ODRj75Azs_Ii5hHR0NqNBwh-hCQ_Pr4uaSHK_lJQ1-4Z45GKIfJWj-iIYb_IXWrovDsX8sUXeOj7lzNpQ7TyJDCcZsAJ8ZA950JK75Bz5Bg"/>
+</div>
+<ul class="flex flex-col gap-4 w-full px-2">
+<!-- Active Tab: Connection -->
+<li>
+<a aria-current="page" class="flex flex-col items-center justify-center p-2 rounded w-full text-secondary-fixed border-l-2 border-secondary-fixed bg-surface-container-high transition-colors duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined mb-1" style="font-variation-settings: 'FILL' 1;">lan</span>
+<span class="font-label-xs text-label-xs">Connection</span>
+</a>
+</li>
+<li>
+<a class="flex flex-col items-center justify-center p-2 rounded w-full text-on-surface-variant hover:bg-surface-variant hover:text-secondary transition-colors duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined mb-1">swap_horiz</span>
+<span class="font-label-xs text-label-xs">Telegrams</span>
+</a>
+</li>
+<li>
+<a class="flex flex-col items-center justify-center p-2 rounded w-full text-on-surface-variant hover:bg-surface-variant hover:text-secondary transition-colors duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined mb-1">layers</span>
+<span class="font-label-xs text-label-xs">Canvas</span>
+</a>
+</li>
+<li>
+<a class="flex flex-col items-center justify-center p-2 rounded w-full text-on-surface-variant hover:bg-surface-variant hover:text-secondary transition-colors duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined mb-1">settings_input_component</span>
+<span class="font-label-xs text-label-xs text-center leading-tight">Automation</span>
+</a>
+</li>
+<li>
+<a class="flex flex-col items-center justify-center p-2 rounded w-full text-on-surface-variant hover:bg-surface-variant hover:text-secondary transition-colors duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined mb-1">analytics</span>
+<span class="font-label-xs text-label-xs text-center leading-tight">Diagnostics</span>
+</a>
+</li>
+</ul>
+</nav>
+<!-- Main Content Area -->
+<div class="flex-1 flex flex-col min-w-0">
+<!-- TopAppBar -->
+<header class="docked top-0 w-full flex justify-between items-center px-gutter h-14 bg-surface-container-low dark:bg-surface-container-low border-b border-outline-variant z-10 shrink-0">
+<div class="flex items-center gap-4">
+<span class="font-headline-md text-headline-md tracking-tighter text-on-surface">PLC SIMULATOR</span>
+<span class="font-label-xs text-label-xs text-on-surface-variant ml-2 border border-outline-variant px-1.5 py-0.5 rounded">SIM-PLC v2.4</span>
+</div>
+<nav class="hidden md:flex gap-6 h-full items-end">
+<a class="font-label-xs text-label-xs text-on-surface-variant hover:text-secondary-fixed transition-all duration-200 pb-2" href="#">MP</a>
+<a class="font-label-xs text-label-xs text-on-surface-variant hover:text-secondary-fixed transition-all duration-200 pb-2" href="#">SL</a>
+<a class="font-label-xs text-label-xs text-on-surface-variant hover:text-secondary-fixed transition-all duration-200 pb-2" href="#">PD</a>
+<a class="font-label-xs text-label-xs text-on-surface-variant hover:text-secondary-fixed transition-all duration-200 pb-2" href="#">SE</a>
+</nav>
+<div class="flex items-center gap-3">
+<button class="text-on-surface-variant hover:text-secondary transition-colors">
+<span class="material-symbols-outlined">monitor_heart</span>
+</button>
+<button class="text-on-surface-variant hover:text-secondary transition-colors">
+<span class="material-symbols-outlined">terminal</span>
+</button>
+<button class="text-on-surface-variant hover:text-secondary transition-colors">
+<span class="material-symbols-outlined">power_settings_new</span>
+</button>
+<button class="bg-primary-fixed text-on-primary-fixed px-3 py-1.5 rounded font-label-xs text-label-xs ml-2 hover:opacity-90 transition-opacity">Connect</button>
+<img alt="Status Indicator" class="w-6 h-6 rounded-full ml-2" data-alt="A tiny status indicator light, rendered as a glowing green or red dot with high tech styling, signifying connection status." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAwVUB33BdSAEDKGZVlv5abxMgddeZVD9YBhhHUY9LycQIbjeZOa2sgZXftrWppvq88qB3wkvoEctq-Ta1pU4B6A82QZ0KHhWM19PPxhabjGyiPOWFby6zGB8X6-67xRpW_HLAgnD9SOvfg1NeNTmpHq-jl5ffQLHp3hm0ko5BdKI6gEuWpFuR8K1S2Th97GP1MzSGN3ayZihQMMJCV42yLSrOeicPKoke21S99bqSFS6O5-n-jcWjJZg"/>
+</div>
+</header>
+<!-- Canvas / Dashboard Content -->
+<main class="flex-1 grid-bg p-container-padding flex flex-col gap-4 overflow-y-auto relative">
+<div class="flex flex-col lg:flex-row gap-4 h-[400px] shrink-0">
+<!-- Configuration Panel -->
+<section class="w-full lg:w-1/3 bg-[#1e1e1e] border border-[#ffffff15] rounded flex flex-col">
+<div class="p-3 border-b border-[#ffffff15] bg-surface-container-low flex justify-between items-center">
+<h2 class="font-headline-md text-headline-md text-on-surface">Configuration</h2>
+<span class="material-symbols-outlined text-outline">tune</span>
+</div>
+<div class="p-4 flex flex-col gap-4 overflow-y-auto">
+<div class="flex flex-col gap-1">
+<label class="font-label-xs text-label-xs text-on-surface-variant uppercase">Target IP</label>
+<input class="bg-background border border-[#ffffff15] rounded px-3 py-2 text-on-surface focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary font-data-mono text-data-mono" type="text" value="192.168.1.50"/>
+</div>
+<div class="flex flex-col gap-1">
+<label class="font-label-xs text-label-xs text-on-surface-variant uppercase">Target Port</label>
+<input class="bg-background border border-[#ffffff15] rounded px-3 py-2 text-on-surface focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary font-data-mono text-data-mono" type="text" value="2000"/>
+</div>
+<div class="flex flex-col gap-1">
+<label class="font-label-xs text-label-xs text-on-surface-variant uppercase">Mode</label>
+<div class="flex gap-2">
+<button class="flex-1 bg-surface-container-high border-2 border-primary text-primary px-3 py-2 rounded font-label-xs text-label-xs uppercase">Client</button>
+<button class="flex-1 bg-background border border-[#ffffff15] text-on-surface-variant px-3 py-2 rounded font-label-xs text-label-xs uppercase hover:bg-surface-container-low">Server</button>
+</div>
+</div>
+<div class="flex flex-col gap-1">
+<label class="font-label-xs text-label-xs text-on-surface-variant uppercase">Heartbeat (ms)</label>
+<input class="bg-background border border-[#ffffff15] rounded px-3 py-2 text-on-surface focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary font-data-mono text-data-mono" type="number" value="500"/>
+</div>
+<div class="flex items-center gap-2 mt-2">
+<input checked="" class="w-4 h-4 bg-background border-[#ffffff15] text-primary rounded focus:ring-primary focus:ring-offset-background" type="checkbox"/>
+<label class="font-label-xs text-label-xs text-on-surface-variant uppercase">Auto-Reconnect</label>
+</div>
+</div>
+</section>
+<!-- Session Status Panel -->
+<section class="w-full lg:w-2/3 bg-[#1e1e1e] border border-[#ffffff15] rounded flex flex-col items-center justify-center p-8 relative overflow-hidden">
+<div class="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-error/10 via-background/0 to-background/0"></div>
+<div class="relative z-10 flex flex-col items-center gap-6">
+<div class="w-48 h-48 rounded-full border-4 border-error/30 flex items-center justify-center glow-error bg-surface-container-lowest">
+<div class="text-center">
+<span class="material-symbols-outlined text-error text-[48px] block mb-2">link_off</span>
+<span class="font-label-xs text-label-xs text-error uppercase block tracking-widest">Disconnected</span>
+</div>
+</div>
+<button class="bg-primary-container text-on-primary-container px-8 py-3 rounded font-label-xs text-label-xs uppercase tracking-wider hover:bg-primary transition-colors flex items-center gap-2">
+<span class="material-symbols-outlined">power</span>
+                            Initiate Connection
+                        </button>
+<div class="flex gap-4 mt-4">
+<div class="flex items-center gap-2 bg-surface-container-low px-3 py-1.5 rounded border border-[#ffffff15]">
+<span class="w-2 h-2 rounded-full bg-outline"></span>
+<span class="font-label-xs text-label-xs text-on-surface-variant">Tx: 0 p/s</span>
+</div>
+<div class="flex items-center gap-2 bg-surface-container-low px-3 py-1.5 rounded border border-[#ffffff15]">
+<span class="w-2 h-2 rounded-full bg-outline"></span>
+<span class="font-label-xs text-label-xs text-on-surface-variant">Rx: 0 p/s</span>
+</div>
+</div>
+</div>
+</section>
+</div>
+<!-- Live Traffic Monitor -->
+<section class="flex-1 bg-[#1e1e1e] border border-[#ffffff15] rounded flex flex-col min-h-[300px]">
+<div class="p-2 border-b border-[#ffffff15] bg-surface-container-low flex justify-between items-center shrink-0">
+<div class="flex items-center gap-4">
+<h3 class="font-label-xs text-label-xs text-on-surface uppercase ml-2">Live Traffic</h3>
+<div class="flex gap-1 border-l border-[#ffffff15] pl-4">
+<button class="px-2 py-1 bg-surface-container-high border border-primary text-primary rounded font-label-xs text-label-xs">Raw</button>
+<button class="px-2 py-1 bg-background border border-[#ffffff15] text-on-surface-variant hover:text-on-surface rounded font-label-xs text-label-xs">MP</button>
+<button class="px-2 py-1 bg-background border border-[#ffffff15] text-on-surface-variant hover:text-on-surface rounded font-label-xs text-label-xs">PD</button>
+</div>
+</div>
+<button class="flex items-center gap-1 text-on-surface-variant hover:text-error transition-colors px-2 py-1">
+<span class="material-symbols-outlined text-[16px]">delete</span>
+<span class="font-label-xs text-label-xs">Clear Log</span>
+</button>
+</div>
+<div class="p-2 overflow-y-auto flex-1 font-data-mono text-data-mono flex flex-col gap-1 bg-[#121212]">
+<!-- Log Entries -->
+<div class="flex gap-3 px-2 py-1 hover:bg-[#1e1e1e] rounded group">
+<span class="text-outline-variant select-none">[14:02:31.104]</span>
+<span class="text-tertiary-fixed w-8 shrink-0">OUT:</span>
+<span class="text-on-surface break-all">02 4D 50 30 31 00 00 00 00 00 00 00 00 00 00 03</span>
+<span class="text-outline ml-auto hidden group-hover:block text-[10px]">MP_INIT</span>
+</div>
+<div class="flex gap-3 px-2 py-1 bg-[#1e1e1e] hover:bg-surface-container-high rounded group">
+<span class="text-outline-variant select-none">[14:02:31.112]</span>
+<span class="text-secondary w-8 shrink-0">IN:</span>
+<span class="text-on-surface break-all">06</span>
+<span class="text-outline ml-auto hidden group-hover:block text-[10px]">ACK</span>
+</div>
+<div class="flex gap-3 px-2 py-1 hover:bg-[#1e1e1e] rounded group">
+<span class="text-outline-variant select-none">[14:02:31.605]</span>
+<span class="text-tertiary-fixed w-8 shrink-0">OUT:</span>
+<span class="text-on-surface break-all">02 48 42 00 00 00 03</span>
+<span class="text-outline ml-auto hidden group-hover:block text-[10px]">HEARTBEAT</span>
+</div>
+<div class="flex gap-3 px-2 py-1 bg-[#1e1e1e] hover:bg-surface-container-high rounded group">
+<span class="text-outline-variant select-none">[14:02:32.105]</span>
+<span class="text-error w-8 shrink-0">ERR:</span>
+<span class="text-on-error-container break-all">Connection timeout on port 2000</span>
+</div>
+<div class="flex gap-3 px-2 py-1 hover:bg-[#1e1e1e] rounded group opacity-50">
+<span class="text-outline-variant select-none">[14:02:33.000]</span>
+<span class="text-outline w-8 shrink-0">SYS:</span>
+<span class="text-on-surface break-all">Attempting reconnect...</span>
+</div>
+</div>
+</section>
+</main>
+</div>
+</body></html>

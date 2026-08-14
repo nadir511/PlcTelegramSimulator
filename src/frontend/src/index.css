@@ -1,0 +1,78 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-background text-on-background;
+    font-family: 'Inter', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  .material-symbols-outlined {
+    font-family: 'Material Symbols Outlined';
+    font-weight: normal;
+    font-style: normal;
+    line-height: 1;
+    letter-spacing: normal;
+    text-transform: none;
+    display: inline-block;
+    white-space: nowrap;
+    word-wrap: normal;
+    direction: ltr;
+    -webkit-font-feature-settings: 'liga';
+    font-feature-settings: 'liga';
+    font-variation-settings:
+      'FILL' 0,
+      'wght' 400,
+      'GRAD' 0,
+      'opsz' 24;
+  }
+}
+
+@layer utilities {
+  .grid-bg {
+    background-image: radial-gradient(#ffffff10 1px, transparent 1px);
+    background-size: 20px 20px;
+  }
+
+  .glow-error {
+    box-shadow: 0 0 12px rgba(255, 180, 171, 0.3);
+  }
+
+  .glow-success {
+    box-shadow: 0 0 12px rgba(164, 214, 76, 0.3);
+  }
+
+  .glow-primary {
+    box-shadow: 0 0 12px rgba(77, 142, 255, 0.35);
+  }
+
+  .glow-warn {
+    box-shadow: 0 0 12px rgba(255, 183, 134, 0.3);
+  }
+
+  .glow-sensor {
+    box-shadow: 0 0 8px rgba(164, 214, 76, 0.5);
+  }
+
+  .chevron-anim {
+    animation: move-chevrons 1s linear infinite;
+  }
+}
+
+@keyframes move-chevrons {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 20px 0;
+  }
+}

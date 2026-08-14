@@ -1,0 +1,391 @@
+<!DOCTYPE html><html class="dark" lang="en"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>SIM-PLC v2.4 - Telegram Structure</title>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&amp;display=swap" rel="stylesheet">
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Tailwind Config -->
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "secondary-fixed": "#bff365",
+                        "surface-variant": "#353534",
+                        "background": "#131313",
+                        "error-container": "#93000a",
+                        "tertiary-fixed-dim": "#ffb786",
+                        "on-tertiary-fixed-variant": "#723600",
+                        "outline-variant": "#424754",
+                        "on-background": "#e5e2e1",
+                        "primary-container": "#4d8eff",
+                        "surface-dim": "#131313",
+                        "inverse-on-surface": "#313030",
+                        "surface-container-high": "#2a2a2a",
+                        "tertiary-container": "#df7412",
+                        "tertiary": "#ffb786",
+                        "on-primary-fixed": "#001a42",
+                        "inverse-surface": "#e5e2e1",
+                        "on-secondary-fixed": "#131f00",
+                        "outline": "#8c909f",
+                        "surface-container": "#201f1f",
+                        "on-tertiary": "#502400",
+                        "secondary": "#a4d64c",
+                        "on-tertiary-fixed": "#311400",
+                        "on-secondary": "#233600",
+                        "primary-fixed": "#d8e2ff",
+                        "on-surface-variant": "#c2c6d6",
+                        "on-tertiary-container": "#461f00",
+                        "on-primary-container": "#00285d",
+                        "surface-bright": "#393939",
+                        "on-primary-fixed-variant": "#004395",
+                        "error": "#ffb4ab",
+                        "primary": "#adc6ff",
+                        "surface-tint": "#adc6ff",
+                        "on-secondary-fixed-variant": "#354e00",
+                        "secondary-container": "#719e13",
+                        "surface-container-low": "#1c1b1b",
+                        "surface-container-highest": "#353534",
+                        "on-secondary-container": "#1e2f00",
+                        "secondary-fixed-dim": "#a4d64c",
+                        "surface-container-lowest": "#0e0e0e",
+                        "on-primary": "#002e6a",
+                        "on-surface": "#e5e2e1",
+                        "tertiary-fixed": "#ffdcc6",
+                        "inverse-primary": "#005ac2",
+                        "primary-fixed-dim": "#adc6ff",
+                        "on-error": "#690005",
+                        "on-error-container": "#ffdad6",
+                        "surface": "#131313"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "gutter": "12px",
+                        "container-padding": "16px",
+                        "canvas-grid": "20px",
+                        "unit": "4px"
+                    },
+                    "fontFamily": {
+                        "display-lg": ["Inter"],
+                        "body-md": ["Inter"],
+                        "label-xs": ["Inter"],
+                        "data-mono": ["JetBrains Mono", "monospace"],
+                        "headline-md": ["Inter"]
+                    },
+                    "fontSize": {
+                        "display-lg": ["32px", { "lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "label-xs": ["11px", { "lineHeight": "16px", "fontWeight": "700" }],
+                        "data-mono": ["13px", { "lineHeight": "18px", "fontWeight": "400" }],
+                        "headline-md": ["20px", { "lineHeight": "28px", "fontWeight": "600" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        /* Custom Scrollbar for dense UI */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #121212; }
+        ::-webkit-scrollbar-thumb { background: #424754; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #8c909f; }
+        
+        /* Grid background pattern */
+        .bg-grid-pattern {
+            background-size: 20px 20px;
+            background-image: radial-gradient(circle, rgba(255, 255, 255, 0.1) 1px, transparent 1px);
+        }
+
+        /* Status Glow Utility */
+        .glow-secondary { box-shadow: 0 0 8px rgba(191, 243, 101, 0.3); }
+        .glow-primary { box-shadow: 0 0 8px rgba(173, 198, 255, 0.3); }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body-md h-screen w-screen overflow-hidden flex selection:bg-secondary selection:text-on-secondary">
+<!-- Shared Component: SideNavBar -->
+<aside class="bg-surface-container dark:bg-surface-container docked left-0 h-full w-20 border-r border-outline-variant flat no shadows flex flex-col items-center py-container-padding h-screen overflow-y-auto shrink-0 z-20">
+<!-- Brand Avatar/Logo -->
+<div class="mb-8 flex flex-col items-center justify-center h-12 w-12 rounded bg-surface-container-lowest border border-outline-variant">
+<span class="material-symbols-outlined text-secondary" style="font-variation-settings: 'FILL' 1; font-size: 24px;" title="System Operator">precision_manufacturing</span>
+</div>
+<!-- Navigation Tabs -->
+<nav class="flex flex-col w-full gap-2">
+<!-- Connection (Inactive) -->
+<a class="flex flex-col items-center justify-center py-3 w-full transition-colors duration-150 ease-in-out hover:bg-surface-variant hover:text-secondary text-on-surface-variant" href="#" title="Connection">
+<span class="material-symbols-outlined mb-1">lan</span>
+<span class="font-label-xs text-label-xs uppercase">Conn</span>
+</a>
+<!-- Telegrams (Active) -->
+<a class="flex flex-col items-center justify-center py-3 w-full transition-colors duration-150 ease-in-out hover:bg-surface-variant hover:text-secondary text-secondary-fixed border-l-2 border-secondary-fixed bg-surface-container-high" href="#" title="Telegrams">
+<span class="material-symbols-outlined mb-1 text-secondary-fixed" style="font-variation-settings: 'FILL' 1;">swap_horiz</span>
+<span class="font-label-xs text-label-xs uppercase text-secondary-fixed">Telg</span>
+</a>
+<!-- Canvas (Inactive) -->
+<a class="flex flex-col items-center justify-center py-3 w-full transition-colors duration-150 ease-in-out hover:bg-surface-variant hover:text-secondary text-on-surface-variant" href="#" title="Canvas">
+<span class="material-symbols-outlined mb-1">layers</span>
+<span class="font-label-xs text-label-xs uppercase">Canv</span>
+</a>
+<!-- Automation (Inactive) -->
+<a class="flex flex-col items-center justify-center py-3 w-full transition-colors duration-150 ease-in-out hover:bg-surface-variant hover:text-secondary text-on-surface-variant" href="#" title="Automation">
+<span class="material-symbols-outlined mb-1">settings_input_component</span>
+<span class="font-label-xs text-label-xs uppercase">Auto</span>
+</a>
+<!-- Diagnostics (Inactive) -->
+<a class="flex flex-col items-center justify-center py-3 w-full transition-colors duration-150 ease-in-out hover:bg-surface-variant hover:text-secondary text-on-surface-variant" href="#" title="Diagnostics">
+<span class="material-symbols-outlined mb-1">analytics</span>
+<span class="font-label-xs text-label-xs uppercase">Diag</span>
+</a>
+</nav>
+</aside>
+<!-- Main Content Canvas -->
+<main class="flex-1 flex flex-col h-full min-w-0 bg-surface bg-grid-pattern relative">
+<!-- Shared Component: TopAppBar -->
+<header class="bg-surface-container-low dark:bg-surface-container-low docked top-0 w-full border-b border-outline-variant flat no shadows flex justify-between items-center px-gutter h-14 w-full shrink-0 z-10 transition-all duration-200">
+<!-- Left Side: Brand & Registry -->
+<div class="flex items-center h-full gap-8">
+<div class="flex flex-col justify-center">
+<h1 class="font-headline-md text-headline-md tracking-tighter text-on-surface leading-tight">PLC SIMULATOR</h1>
+<span class="font-label-xs text-label-xs text-on-surface-variant uppercase">SIM-PLC v2.4</span>
+</div>
+<!-- Telegram Type Registry (Navigation Links mapping) -->
+<nav class="flex items-end h-full gap-6"><!-- MP (Active) -->
+<a class="h-full flex items-center font-headline-md text-headline-md text-secondary border-b-2 border-secondary transition-all duration-200 hover:text-secondary-fixed" href="#">MP</a>
+<!-- SL (Inactive) -->
+<a class="h-full flex items-center font-headline-md text-headline-md text-on-surface-variant transition-all duration-200 hover:text-secondary-fixed" href="#">SL</a>
+<!-- PD (Inactive) -->
+<a class="h-full flex items-center font-headline-md text-headline-md text-on-surface-variant transition-all duration-200 hover:text-secondary-fixed" href="#">PD</a>
+<!-- SE (Inactive) -->
+<a class="h-full flex items-center font-headline-md text-headline-md text-on-surface-variant transition-all duration-200 hover:text-secondary-fixed" href="#">SE</a>
+<!-- SR (Inactive) -->
+<a class="h-full flex items-center font-headline-md text-headline-md text-on-surface-variant transition-all duration-200 hover:text-secondary-fixed" href="#">SR</a>
+<!-- ST (Inactive) -->
+<a class="h-full flex items-center font-headline-md text-headline-md text-on-surface-variant transition-all duration-200 hover:text-secondary-fixed" href="#">ST</a>
+<!-- FL (Inactive) -->
+<a class="h-full flex items-center font-headline-md text-headline-md text-on-surface-variant transition-all duration-200 hover:text-secondary-fixed" href="#">FL</a>
+<!-- TO (Inactive) -->
+<a class="h-full flex items-center font-headline-md text-headline-md text-on-surface-variant transition-all duration-200 hover:text-secondary-fixed" href="#">TO</a></nav>
+</div>
+<!-- Right Side: Actions -->
+<div class="flex items-center gap-6">
+<!-- Trailing Icon Actions -->
+<div class="flex items-center gap-3 text-on-surface-variant">
+<button class="p-1 rounded hover:bg-surface-variant transition-colors hover:text-secondary-fixed">
+<span class="material-symbols-outlined text-[20px]">monitor_heart</span>
+</button>
+<button class="p-1 rounded hover:bg-surface-variant transition-colors hover:text-secondary-fixed">
+<span class="material-symbols-outlined text-[20px]">terminal</span>
+</button>
+<button class="p-1 rounded hover:bg-surface-variant transition-colors hover:text-secondary-fixed">
+<span class="material-symbols-outlined text-[20px]">power_settings_new</span>
+</button>
+</div>
+<!-- Trailing Primary Action -->
+<button class="bg-primary hover:bg-primary-fixed-dim text-on-primary px-4 py-1.5 rounded font-label-xs text-label-xs uppercase tracking-wider transition-colors glow-primary flex items-center gap-2">
+<span class="w-1.5 h-1.5 rounded-full bg-on-primary"></span>
+                    Connect
+                </button>
+<!-- Profile Indicator (hidden visually but present semantically if needed, replaced by operator badge in sidenav) -->
+</div>
+</header>
+<!-- Content Area -->
+<div class="flex-1 p-container-padding flex flex-col gap-4 overflow-y-auto">
+<!-- Header section for content context -->
+<div class="flex justify-between items-end mb-2">
+<div>
+<h2 class="font-headline-md text-headline-md text-on-surface">Message Builder: <span class="text-secondary">MP</span></h2>
+<p class="font-body-md text-body-md text-on-surface-variant">Define structural offsets and default payloads for Material Present telegrams.</p>
+</div>
+<div class="flex gap-2">
+<button class="border border-outline-variant hover:border-secondary text-on-surface-variant hover:text-secondary px-3 py-1 rounded bg-surface-container font-label-xs text-label-xs uppercase transition-colors">Import XML</button>
+<button class="border border-primary-container bg-primary-container/10 text-primary hover:bg-primary-container hover:text-on-primary-container px-3 py-1 rounded font-label-xs text-label-xs uppercase transition-colors">Save Structure</button>
+</div>
+</div>
+<!-- Field Definition Grid -->
+<div class="flex-1 border border-outline-variant bg-surface-container-lowest rounded overflow-hidden flex flex-col">
+<div class="bg-surface-container border-b border-outline-variant px-3 py-2 flex justify-between items-center shrink-0">
+<span class="font-label-xs text-label-xs text-on-surface-variant uppercase flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px]">data_object</span> Field Registry
+                    </span>
+<button class="text-secondary hover:text-secondary-fixed flex items-center gap-1 font-label-xs text-label-xs uppercase">
+<span class="material-symbols-outlined text-[16px]">add</span> Add Field
+                    </button>
+</div>
+<div class="overflow-auto flex-1">
+<table class="w-full text-left border-collapse">
+<thead class="sticky top-0 bg-surface-container z-10 shadow-[0_1px_0_#424754]">
+<tr>
+<th class="font-label-xs text-label-xs text-on-surface-variant uppercase px-4 py-2 w-12 text-center border-r border-outline-variant">Idx</th>
+<th class="font-label-xs text-label-xs text-on-surface-variant uppercase px-4 py-2 border-r border-outline-variant">Field Name</th>
+<th class="font-label-xs text-label-xs text-on-surface-variant uppercase px-4 py-2 border-r border-outline-variant">Data Type</th>
+<th class="font-label-xs text-label-xs text-on-surface-variant uppercase px-4 py-2 border-r border-outline-variant">Offset (Bytes)</th>
+<th class="font-label-xs text-label-xs text-on-surface-variant uppercase px-4 py-2 border-r border-outline-variant">Length</th>
+<th class="font-label-xs text-label-xs text-on-surface-variant uppercase px-4 py-2">Default Value</th>
+</tr>
+</thead>
+<tbody class="font-data-mono text-data-mono text-on-surface divide-y divide-outline-variant/50">
+<!-- Row 1: Header -->
+<tr class="bg-surface-container-low hover:bg-surface-variant transition-colors group">
+<td class="px-4 py-2 text-center text-on-surface-variant border-r border-outline-variant">00</td>
+<td class="px-4 py-2 border-r border-outline-variant">Header</td>
+<td class="px-4 py-2 border-r border-outline-variant">
+<span class="px-2 py-0.5 rounded bg-surface-bright text-tertiary border border-outline-variant text-[11px]">STRING</span>
+</td>
+<td class="px-4 py-2 border-r border-outline-variant text-secondary">0</td>
+<td class="px-4 py-2 border-r border-outline-variant">4</td>
+<td class="px-4 py-1">
+<input class="w-full bg-surface border border-outline-variant rounded px-2 py-1 text-data-mono font-data-mono text-on-surface focus:border-secondary focus:ring-0 focus:outline-none transition-colors h-7" readonly="" type="text" value="STX">
+</td>
+</tr>
+<!-- Row 2: TelegramID -->
+<tr class="bg-surface-container hover:bg-surface-variant transition-colors group">
+<td class="px-4 py-2 text-center text-on-surface-variant border-r border-outline-variant">01</td>
+<td class="px-4 py-2 border-r border-outline-variant">TelegramID</td>
+<td class="px-4 py-2 border-r border-outline-variant">
+<span class="px-2 py-0.5 rounded bg-surface-bright text-primary border border-outline-variant text-[11px]">HEX</span>
+</td>
+<td class="px-4 py-2 border-r border-outline-variant text-secondary">4</td>
+<td class="px-4 py-2 border-r border-outline-variant">2</td>
+<td class="px-4 py-1">
+<input class="w-full bg-background border border-outline-variant rounded px-2 py-1 text-data-mono font-data-mono text-primary focus:border-secondary focus:ring-0 focus:outline-none transition-colors h-7" type="text" value="0x4D 0x50">
+</td>
+</tr>
+<!-- Row 3: Barcode -->
+<tr class="bg-surface-container-low hover:bg-surface-variant transition-colors group">
+<td class="px-4 py-2 text-center text-on-surface-variant border-r border-outline-variant">02</td>
+<td class="px-4 py-2 border-r border-outline-variant">Barcode</td>
+<td class="px-4 py-2 border-r border-outline-variant">
+<span class="px-2 py-0.5 rounded bg-surface-bright text-tertiary border border-outline-variant text-[11px]">STRING</span>
+</td>
+<td class="px-4 py-2 border-r border-outline-variant text-secondary">6</td>
+<td class="px-4 py-2 border-r border-outline-variant">20</td>
+<td class="px-4 py-1">
+<input class="w-full bg-background border border-outline-variant rounded px-2 py-1 text-data-mono font-data-mono text-on-surface focus:border-secondary focus:ring-0 focus:outline-none transition-colors h-7 placeholder-on-surface-variant" placeholder="Enter test string" type="text" value="?">
+</td>
+</tr>
+<!-- Row 4: Weight (Added for realism) -->
+<tr class="bg-surface-container hover:bg-surface-variant transition-colors group">
+<td class="px-4 py-2 text-center text-on-surface-variant border-r border-outline-variant">03</td>
+<td class="px-4 py-2 border-r border-outline-variant">Weight_g</td>
+<td class="px-4 py-2 border-r border-outline-variant">
+<span class="px-2 py-0.5 rounded bg-surface-bright text-secondary border border-outline-variant text-[11px]">INT</span>
+</td>
+<td class="px-4 py-2 border-r border-outline-variant text-secondary">26</td>
+<td class="px-4 py-2 border-r border-outline-variant">4</td>
+<td class="px-4 py-1">
+<input class="w-full bg-background border border-outline-variant rounded px-2 py-1 text-data-mono font-data-mono text-on-surface focus:border-secondary focus:ring-0 focus:outline-none transition-colors h-7" type="text" value="0000">
+</td>
+</tr>
+<!-- Row 5: Checksum -->
+<tr class="bg-surface-container-low hover:bg-surface-variant transition-colors group">
+<td class="px-4 py-2 text-center text-on-surface-variant border-r border-outline-variant">04</td>
+<td class="px-4 py-2 border-r border-outline-variant">Checksum</td>
+<td class="px-4 py-2 border-r border-outline-variant">
+<span class="px-2 py-0.5 rounded bg-surface-bright text-primary border border-outline-variant text-[11px]">HEX</span>
+</td>
+<td class="px-4 py-2 border-r border-outline-variant text-secondary">30</td>
+<td class="px-4 py-2 border-r border-outline-variant">2</td>
+<td class="px-4 py-1 flex items-center gap-2">
+<input class="w-20 bg-surface border border-outline-variant rounded px-2 py-1 text-data-mono font-data-mono text-on-surface-variant focus:border-secondary focus:ring-0 focus:outline-none transition-colors h-7" disabled="" type="text" value="Auto">
+<span class="font-label-xs text-label-xs text-on-surface-variant uppercase">CRC-16</span>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<!-- Payload Previewer (Byte Map) -->
+<div class="h-48 border border-outline-variant bg-background rounded flex flex-col shrink-0">
+<div class="bg-surface-container border-b border-outline-variant px-3 py-2 flex justify-between items-center">
+<span class="font-label-xs text-label-xs text-on-surface-variant uppercase flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px]">visibility</span> Payload Byte Map Preview
+                    </span>
+<span class="font-data-mono text-data-mono text-on-surface-variant text-[11px]">Total Length: 32 Bytes</span>
+</div>
+<div class="p-4 flex-1 overflow-auto"><!-- Enhanced Byte Map with Field Labels -->
+<div class="flex flex-wrap gap-4 w-max">
+    <!-- Header -->
+    <div class="flex flex-col gap-1">
+        <div class="flex justify-between items-center px-1">
+            <span class="text-[10px] font-data-mono text-tertiary uppercase">Header</span>
+            <span class="text-[10px] font-data-mono text-on-surface-variant">0</span>
+        </div>
+        <div class="flex border border-tertiary/30 bg-tertiary/10 rounded overflow-hidden group relative cursor-crosshair hover:border-tertiary transition-colors" title="Header (0-3)">
+            <div class="w-8 h-10 flex items-center justify-center font-data-mono text-data-mono text-tertiary border-r border-tertiary/20 last:border-r-0">53</div>
+            <div class="w-8 h-10 flex items-center justify-center font-data-mono text-data-mono text-tertiary border-r border-tertiary/20 last:border-r-0">54</div>
+            <div class="w-8 h-10 flex items-center justify-center font-data-mono text-data-mono text-tertiary border-r border-tertiary/20 last:border-r-0">58</div>
+            <div class="w-8 h-10 flex items-center justify-center font-data-mono text-data-mono text-tertiary border-r border-tertiary/20 last:border-r-0">00</div>
+        </div>
+    </div>
+    <!-- TelegramID -->
+    <div class="flex flex-col gap-1">
+        <div class="flex justify-between items-center px-1">
+            <span class="text-[10px] font-data-mono text-primary uppercase">TelegramID</span>
+            <span class="text-[10px] font-data-mono text-on-surface-variant">4</span>
+        </div>
+        <div class="flex border border-primary/30 bg-primary/10 rounded overflow-hidden group relative cursor-crosshair hover:border-primary transition-colors" title="TelegramID (4-5)">
+            <div class="w-8 h-10 flex items-center justify-center font-data-mono text-data-mono text-primary border-r border-primary/20 last:border-r-0">4D</div>
+            <div class="w-8 h-10 flex items-center justify-center font-data-mono text-data-mono text-primary border-r border-primary/20 last:border-r-0">50</div>
+        </div>
+    </div>
+    <!-- Barcode -->
+    <div class="flex flex-col gap-1">
+        <div class="flex justify-between items-center px-1">
+            <span class="text-[10px] font-data-mono text-on-surface uppercase">Barcode</span>
+            <span class="text-[10px] font-data-mono text-on-surface-variant">6</span>
+        </div>
+        <div class="flex border border-outline-variant/30 bg-surface-variant/30 rounded overflow-hidden group relative cursor-crosshair hover:border-outline-variant transition-colors" title="Barcode (6-25)">
+            <div class="w-8 h-10 flex items-center justify-center font-data-mono text-data-mono text-on-surface border-r border-outline-variant/20">3F</div>
+            <div class="w-8 h-10 flex items-center justify-center font-data-mono text-data-mono text-on-surface border-r border-outline-variant/20">3F</div>
+            <div class="px-4 h-10 flex items-center justify-center font-data-mono text-data-mono text-on-surface-variant border-r border-outline-variant/20">... (16 bytes) ...</div>
+            <div class="w-8 h-10 flex items-center justify-center font-data-mono text-data-mono text-on-surface border-r border-outline-variant/20">3F</div>
+            <div class="w-8 h-10 flex items-center justify-center font-data-mono text-data-mono text-on-surface last:border-r-0">3F</div>
+        </div>
+    </div>
+    <!-- Weight -->
+    <div class="flex flex-col gap-1">
+        <div class="flex justify-between items-center px-1">
+            <span class="text-[10px] font-data-mono text-secondary uppercase">Weight</span>
+            <span class="text-[10px] font-data-mono text-on-surface-variant">26</span>
+        </div>
+        <div class="flex border border-secondary/30 bg-secondary/10 rounded overflow-hidden group relative cursor-crosshair hover:border-secondary transition-colors" title="Weight (26-29)">
+            <div class="w-8 h-10 flex items-center justify-center font-data-mono text-data-mono text-secondary border-r border-secondary/20 last:border-r-0">00</div>
+            <div class="w-8 h-10 flex items-center justify-center font-data-mono text-data-mono text-secondary border-r border-secondary/20 last:border-r-0">00</div>
+            <div class="w-8 h-10 flex items-center justify-center font-data-mono text-data-mono text-secondary border-r border-secondary/20 last:border-r-0">00</div>
+            <div class="w-8 h-10 flex items-center justify-center font-data-mono text-data-mono text-secondary border-r border-secondary/20 last:border-r-0">00</div>
+        </div>
+    </div>
+    <!-- Checksum -->
+    <div class="flex flex-col gap-1">
+        <div class="flex justify-between items-center px-1">
+            <span class="text-[10px] font-data-mono text-error uppercase">Checksum</span>
+            <span class="text-[10px] font-data-mono text-on-surface-variant">30</span>
+        </div>
+        <div class="flex border border-error/50 bg-error/10 rounded overflow-hidden group relative cursor-crosshair hover:border-error transition-colors" title="Checksum (30-31)">
+            <div class="w-8 h-10 flex items-center justify-center font-data-mono text-data-mono text-error border-r border-error/20 last:border-r-0">??</div>
+            <div class="w-8 h-10 flex items-center justify-center font-data-mono text-data-mono text-error border-r border-error/20 last:border-r-0">??</div>
+        </div>
+    </div>
+</div>
+<!-- Live String Output -->
+<div class="mt-4 pt-3 border-t border-outline-variant/30">
+    <span class="font-label-xs text-label-xs text-on-surface-variant uppercase block mb-1">Raw Stream Output:</span>
+    <div class="font-data-mono text-data-mono text-on-surface bg-surface-container-low p-2 rounded border border-outline-variant break-all">
+        <span class="text-tertiary">53 54 58 00</span> <span class="text-primary">4D 50</span> <span class="text-on-surface-variant">3F 3F 3F 3F 3F 3F 3F 3F 3F 3F 3F 3F 3F 3F 3F 3F 3F 3F 3F 3F</span> <span class="text-secondary">00 00 00 00</span> <span class="text-error">00 00</span>
+    </div>
+</div></div>
+</div>
+</div>
+</main>
+
+
+</body></html>

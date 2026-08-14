@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Visual Conveyor Layout Designer &amp; Simulation Canvas</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&amp;family=JetBrains+Mono:wght@400&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "secondary-fixed": "#bff365",
+                      "surface-variant": "#353534",
+                      "background": "#131313",
+                      "error-container": "#93000a",
+                      "tertiary-fixed-dim": "#ffb786",
+                      "on-tertiary-fixed-variant": "#723600",
+                      "outline-variant": "#424754",
+                      "on-background": "#e5e2e1",
+                      "primary-container": "#4d8eff",
+                      "surface-dim": "#131313",
+                      "inverse-on-surface": "#313030",
+                      "surface-container-high": "#2a2a2a",
+                      "tertiary-container": "#df7412",
+                      "tertiary": "#ffb786",
+                      "on-primary-fixed": "#001a42",
+                      "inverse-surface": "#e5e2e1",
+                      "on-secondary-fixed": "#131f00",
+                      "outline": "#8c909f",
+                      "surface-container": "#201f1f",
+                      "on-tertiary": "#502400",
+                      "secondary": "#a4d64c",
+                      "on-tertiary-fixed": "#311400",
+                      "on-secondary": "#233600",
+                      "primary-fixed": "#d8e2ff",
+                      "on-surface-variant": "#c2c6d6",
+                      "on-tertiary-container": "#461f00",
+                      "on-primary-container": "#00285d",
+                      "surface-bright": "#393939",
+                      "on-primary-fixed-variant": "#004395",
+                      "error": "#ffb4ab",
+                      "primary": "#adc6ff",
+                      "surface-tint": "#adc6ff",
+                      "on-secondary-fixed-variant": "#354e00",
+                      "secondary-container": "#719e13",
+                      "surface-container-low": "#1c1b1b",
+                      "surface-container-highest": "#353534",
+                      "on-secondary-container": "#1e2f00",
+                      "secondary-fixed-dim": "#a4d64c",
+                      "surface-container-lowest": "#0e0e0e",
+                      "on-primary": "#002e6a",
+                      "on-surface": "#e5e2e1",
+                      "tertiary-fixed": "#ffdcc6",
+                      "inverse-primary": "#005ac2",
+                      "primary-fixed-dim": "#adc6ff",
+                      "on-error": "#690005",
+                      "on-error-container": "#ffdad6",
+                      "surface": "#131313"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.125rem",
+                      "lg": "0.25rem",
+                      "xl": "0.5rem",
+                      "full": "0.75rem"
+              },
+              "spacing": {
+                      "gutter": "12px",
+                      "container-padding": "16px",
+                      "canvas-grid": "20px",
+                      "unit": "4px"
+              },
+              "fontFamily": {
+                      "display-lg": [
+                              "Inter"
+                      ],
+                      "body-md": [
+                              "Inter"
+                      ],
+                      "label-xs": [
+                              "Inter"
+                      ],
+                      "data-mono": [
+                              "JetBrains Mono"
+                      ],
+                      "headline-md": [
+                              "Inter"
+                      ]
+              },
+              "fontSize": {
+                      "display-lg": [
+                              "32px",
+                              {
+                                      "lineHeight": "40px",
+                                      "letterSpacing": "-0.02em",
+                                      "fontWeight": "700"
+                              }
+                      ],
+                      "body-md": [
+                              "14px",
+                              {
+                                      "lineHeight": "20px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "label-xs": [
+                              "11px",
+                              {
+                                      "lineHeight": "16px",
+                                      "fontWeight": "700"
+                              }
+                      ],
+                      "data-mono": [
+                              "13px",
+                              {
+                                      "lineHeight": "18px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "headline-md": [
+                              "20px",
+                              {
+                                      "lineHeight": "28px",
+                                      "fontWeight": "600"
+                              }
+                      ]
+              }
+            }
+          }
+        }
+    </script>
+<style>
+        body {
+            background-color: #121212;
+            color: #e5e2e1;
+            margin: 0;
+            overflow: hidden; /* App-like layout */
+        }
+        .canvas-bg {
+            background-image: radial-gradient(#ffffff10 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+        .panel-border {
+            border: 1px solid #ffffff15;
+        }
+        .active-border {
+            border: 1px solid #a4d64c;
+        }
+        .status-glow {
+            box-shadow: 0 0 8px rgba(164, 214, 76, 0.3);
+        }
+        .btn-primary {
+            background-color: #adc6ff;
+            color: #002e6a;
+        }
+        .btn-ghost {
+            border: 1px solid #424754;
+            background: transparent;
+            color: #e5e2e1;
+        }
+        .conveyor-track {
+            background-color: #252525;
+            border: 1px solid #424754;
+        }
+        .chevron-anim {
+            animation: moveChevrons 1s linear infinite;
+        }
+        @keyframes moveChevrons {
+            from { background-position: 0 0; }
+            to { background-position: 20px 0; }
+        }
+        /* Custom scrollbar for webkit */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #121212;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #353534;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #424754;
+        }
+        .palette-group {
+            margin-bottom: 12px;
+        }
+        .palette-group-title {
+            font-size: 10px;
+            text-transform: uppercase;
+            color: #8c909f;
+            margin-bottom: 8px;
+            padding-left: 4px;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+        }
+    </style>
+</head>
+<body class="flex h-screen w-full font-body-md text-body-md antialiased">
+<!-- SideNavBar -->
+<nav class="hidden md:flex flex-col items-center py-container-padding h-screen overflow-y-auto bg-surface-container border-r border-outline-variant w-20 shrink-0 z-50">
+<div class="mb-8">
+<span class="font-display-lg text-display-lg font-bold text-secondary flex items-center justify-center h-12 w-12 rounded-lg bg-surface-variant">S</span>
+</div>
+<div class="flex flex-col gap-4 w-full px-2">
+<button class="flex flex-col items-center justify-center p-2 rounded-lg text-on-surface-variant hover:bg-surface-variant hover:text-secondary transition-colors duration-150 ease-in-out group" title="Connection">
+<span class="material-symbols-outlined mb-1 group-hover:text-secondary">lan</span>
+<span class="font-label-xs text-label-xs opacity-0 group-hover:opacity-100 absolute left-20 bg-surface-container-high px-2 py-1 rounded">Connection</span>
+</button>
+<button class="flex flex-col items-center justify-center p-2 rounded-lg text-on-surface-variant hover:bg-surface-variant hover:text-secondary transition-colors duration-150 ease-in-out group" title="Telegrams">
+<span class="material-symbols-outlined mb-1 group-hover:text-secondary">swap_horiz</span>
+<span class="font-label-xs text-label-xs opacity-0 group-hover:opacity-100 absolute left-20 bg-surface-container-high px-2 py-1 rounded">Telegrams</span>
+</button>
+<button class="flex flex-col items-center justify-center p-2 rounded-lg text-secondary-fixed border-l-2 border-secondary-fixed bg-surface-container-high transition-colors duration-150 ease-in-out group relative" title="Canvas">
+<span class="material-symbols-outlined mb-1" style="font-variation-settings: 'FILL' 1;">layers</span>
+<span class="font-label-xs text-label-xs opacity-0 group-hover:opacity-100 absolute left-20 bg-surface-container-high px-2 py-1 rounded whitespace-nowrap z-50 text-on-surface">Canvas</span>
+</button>
+<button class="flex flex-col items-center justify-center p-2 rounded-lg text-on-surface-variant hover:bg-surface-variant hover:text-secondary transition-colors duration-150 ease-in-out group" title="Automation">
+<span class="material-symbols-outlined mb-1 group-hover:text-secondary">settings_input_component</span>
+<span class="font-label-xs text-label-xs opacity-0 group-hover:opacity-100 absolute left-20 bg-surface-container-high px-2 py-1 rounded">Automation</span>
+</button>
+<button class="flex flex-col items-center justify-center p-2 rounded-lg text-on-surface-variant hover:bg-surface-variant hover:text-secondary transition-colors duration-150 ease-in-out group" title="Diagnostics">
+<span class="material-symbols-outlined mb-1 group-hover:text-secondary">analytics</span>
+<span class="font-label-xs text-label-xs opacity-0 group-hover:opacity-100 absolute left-20 bg-surface-container-high px-2 py-1 rounded">Diagnostics</span>
+</button>
+</div>
+<div class="mt-auto pt-4 border-t border-outline-variant w-full flex justify-center px-2">
+<button class="w-10 h-10 rounded-full bg-surface-variant flex items-center justify-center hover:ring-2 hover:ring-secondary transition-all">
+<span class="material-symbols-outlined text-on-surface">person</span>
+</button>
+</div>
+</nav>
+<!-- Main Content Area -->
+<div class="flex flex-col flex-1 h-screen overflow-hidden relative">
+<!-- TopAppBar -->
+<header class="flex justify-between items-center px-gutter h-14 w-full bg-surface-container-low border-b border-outline-variant shrink-0 z-40">
+<div class="flex items-center gap-4">
+<h1 class="font-headline-md text-headline-md tracking-tighter text-on-surface">PLC SIMULATOR</h1>
+<div class="hidden md:flex gap-4 ml-8">
+<button class="text-on-surface-variant hover:text-secondary-fixed transition-all duration-200 font-label-xs text-label-xs uppercase">MP</button>
+<button class="text-on-surface-variant hover:text-secondary-fixed transition-all duration-200 font-label-xs text-label-xs uppercase">SL</button>
+<button class="text-on-surface-variant hover:text-secondary-fixed transition-all duration-200 font-label-xs text-label-xs uppercase">PD</button>
+<button class="text-secondary border-b-2 border-secondary pb-1 transition-all duration-200 font-label-xs text-label-xs uppercase">SE</button>
+</div>
+</div>
+<div class="flex items-center gap-3">
+<div class="flex gap-2 mr-2">
+<button class="text-on-surface-variant hover:text-secondary p-1 rounded hover:bg-surface-variant transition-colors"><span class="material-symbols-outlined text-[20px]">monitor_heart</span></button>
+<button class="text-on-surface-variant hover:text-secondary p-1 rounded hover:bg-surface-variant transition-colors"><span class="material-symbols-outlined text-[20px]">terminal</span></button>
+<button class="text-on-surface-variant hover:text-error p-1 rounded hover:bg-surface-variant transition-colors"><span class="material-symbols-outlined text-[20px]">power_settings_new</span></button>
+</div>
+<button class="btn-primary px-4 py-1.5 rounded text-sm font-semibold hover:bg-primary-fixed-dim transition-colors">Connect</button>
+</div>
+</header>
+<!-- Workspace Layout -->
+<div class="flex flex-1 overflow-hidden relative">
+<!-- Component Palette (Left) -->
+<aside class="w-64 bg-[#1e1e1e] panel-border shrink-0 flex flex-col z-30">
+<div class="p-3 border-b border-outline-variant bg-surface-container-high">
+<h2 class="font-label-xs text-label-xs uppercase text-on-surface-variant tracking-wider">Components</h2>
+</div>
+<div class="flex-1 overflow-y-auto p-2">
+<!-- Transport Group -->
+<div class="palette-group">
+<h3 class="palette-group-title">Transport</h3>
+<div class="grid grid-cols-2 gap-2">
+<div class="bg-surface-container p-3 rounded border border-outline-variant hover:border-secondary cursor-grab flex flex-col items-center justify-center gap-2 transition-colors">
+<span class="material-symbols-outlined text-secondary">linear_scale</span>
+<span class="font-label-xs text-[10px] text-center">Straight Belt</span>
+</div>
+<div class="bg-surface-container p-3 rounded border border-outline-variant hover:border-secondary cursor-grab flex flex-col items-center justify-center gap-2 transition-colors">
+<span class="material-symbols-outlined text-secondary">call_split</span>
+<span class="font-label-xs text-[10px] text-center">Curved Belt</span>
+</div>
+<div class="bg-surface-container p-3 rounded border border-outline-variant hover:border-secondary cursor-grab flex flex-col items-center justify-center gap-2 transition-colors">
+<span class="material-symbols-outlined text-secondary">trending_up</span>
+<span class="font-label-xs text-[10px] text-center">Incline/Decline</span>
+</div>
+</div>
+</div>
+<!-- Decision Group -->
+<div class="palette-group">
+<h3 class="palette-group-title">Decision</h3>
+<div class="grid grid-cols-2 gap-2">
+<div class="bg-surface-container p-3 rounded border border-outline-variant hover:border-secondary cursor-grab flex flex-col items-center justify-center gap-2 transition-colors">
+<span class="material-symbols-outlined text-secondary">route</span>
+<span class="font-label-xs text-[10px] text-center">Diverter</span>
+</div>
+<div class="bg-surface-container p-3 rounded border border-outline-variant hover:border-secondary cursor-grab flex flex-col items-center justify-center gap-2 transition-colors">
+<span class="material-symbols-outlined text-secondary">merge_type</span>
+<span class="font-label-xs text-[10px] text-center">Merge Point</span>
+</div>
+<div class="bg-surface-container p-3 rounded border border-outline-variant hover:border-secondary cursor-grab flex flex-col items-center justify-center gap-2 transition-colors">
+<span class="material-symbols-outlined text-secondary">door_front</span>
+<span class="font-label-xs text-[10px] text-center">Stopper/Gate</span>
+</div>
+</div>
+</div>
+<!-- Sensors Group -->
+<div class="palette-group">
+<h3 class="palette-group-title">Sensors</h3>
+<div class="grid grid-cols-2 gap-2">
+<div class="bg-surface-container p-3 rounded border border-outline-variant hover:border-secondary cursor-grab flex flex-col items-center justify-center gap-2 transition-colors active-border">
+<span class="material-symbols-outlined text-secondary">sensors</span>
+<span class="font-label-xs text-[10px] text-center">Photo-eye</span>
+</div>
+<div class="bg-surface-container p-3 rounded border border-outline-variant hover:border-secondary cursor-grab flex flex-col items-center justify-center gap-2 transition-colors">
+<span class="material-symbols-outlined text-secondary">barcode_reader</span>
+<span class="font-label-xs text-[10px] text-center">Scanner</span>
+</div>
+</div>
+</div>
+<!-- Environment Group -->
+<div class="palette-group">
+<h3 class="palette-group-title">Environment</h3>
+<div class="grid grid-cols-2 gap-2">
+<div class="bg-surface-container p-3 rounded border border-outline-variant hover:border-secondary cursor-grab flex flex-col items-center justify-center gap-2 transition-colors">
+<span class="material-symbols-outlined text-secondary">input</span>
+<span class="font-label-xs text-[10px] text-center">Bin Source</span>
+</div>
+<div class="bg-surface-container p-3 rounded border border-outline-variant hover:border-secondary cursor-grab flex flex-col items-center justify-center gap-2 transition-colors">
+<span class="material-symbols-outlined text-secondary">output</span>
+<span class="font-label-xs text-[10px] text-center">Sink</span>
+</div>
+</div>
+</div>
+</div>
+</aside>
+<!-- Main Canvas -->
+<main class="flex-1 relative overflow-hidden bg-background canvas-bg z-10 cursor-crosshair">
+<!-- Canvas Content (Simulated) -->
+<div class="absolute inset-0 p-8">
+<!-- Drawn Conveyor Track -->
+<div class="absolute top-1/3 left-1/4 w-96 h-12 conveyor-track rounded flex items-center overflow-hidden">
+<!-- Animated chevrons simulated with repeating gradient -->
+<div class="w-full h-full chevron-anim" style="background-image: repeating-linear-gradient(45deg, transparent, transparent 10px, #353534 10px, #353534 20px);"></div>
+</div>
+<div class="absolute top-1/3 left-[calc(25%+24rem)] w-12 h-48 conveyor-track rounded flex items-center justify-center overflow-hidden">
+<div class="w-full h-full chevron-anim" style="background-image: repeating-linear-gradient(-45deg, transparent, transparent 10px, #353534 10px, #353534 20px);"></div>
+</div>
+<!-- Selected Photo-eye Sensor -->
+<div class="absolute top-[calc(33.33%+4px)] left-[calc(25%+12rem)] w-4 h-4 bg-secondary rounded-full active-border status-glow z-20 cursor-pointer" title="PE-01"></div>
+<!-- Virtual Bin -->
+<div class="absolute top-[calc(33.33%+6px)] left-[calc(25%+4rem)] w-8 h-8 bg-tertiary-container rounded border border-tertiary shadow-lg z-30 flex items-center justify-center font-data-mono text-[10px] text-white">BIN</div>
+</div>
+<!-- Simulation Controls (Bottom Overlay) -->
+<div class="absolute bottom-6 left-1/2 transform -translate-x-1/2 bg-surface-container-high border border-outline-variant rounded-full px-6 py-3 flex items-center gap-6 shadow-2xl z-40 backdrop-blur-md">
+<div class="flex gap-2">
+<button class="w-10 h-10 rounded-full bg-surface-variant hover:bg-surface-bright flex items-center justify-center text-on-surface transition-colors">
+<span class="material-symbols-outlined">play_arrow</span>
+</button>
+<button class="w-10 h-10 rounded-full bg-surface-variant hover:bg-surface-bright flex items-center justify-center text-on-surface transition-colors">
+<span class="material-symbols-outlined">pause</span>
+</button>
+<button class="w-10 h-10 rounded-full bg-surface-variant hover:bg-surface-bright flex items-center justify-center text-error transition-colors">
+<span class="material-symbols-outlined">stop</span>
+</button>
+</div>
+<div class="h-6 w-px bg-outline-variant"></div>
+<div class="flex items-center gap-3">
+<span class="font-label-xs text-label-xs text-on-surface-variant">SPEED</span>
+<div class="flex gap-1 bg-surface-container p-1 rounded-lg border border-outline-variant">
+<button class="px-2 py-1 rounded bg-secondary-fixed text-on-secondary-fixed font-data-mono text-[11px]">1x</button>
+<button class="px-2 py-1 rounded hover:bg-surface-variant text-on-surface font-data-mono text-[11px]">2x</button>
+<button class="px-2 py-1 rounded hover:bg-surface-variant text-on-surface font-data-mono text-[11px]">5x</button>
+</div>
+</div>
+<div class="h-6 w-px bg-outline-variant"></div>
+<button class="btn-primary px-4 py-2 rounded-full font-label-xs text-label-xs flex items-center gap-2 hover:bg-primary-fixed-dim transition-colors">
+<span class="material-symbols-outlined text-[16px]">add_box</span>
+                        SPAWN BIN
+                    </button>
+</div>
+</main>
+<!-- Property Inspector (Right) -->
+<aside class="w-80 bg-[#1e1e1e] panel-border shrink-0 flex flex-col z-30">
+<div class="p-3 border-b border-outline-variant bg-surface-container-high flex justify-between items-center">
+<h2 class="font-label-xs text-label-xs uppercase text-on-surface-variant tracking-wider">Property Inspector</h2>
+<span class="material-symbols-outlined text-[16px] text-on-surface-variant cursor-pointer hover:text-on-surface">close</span>
+</div>
+<div class="flex-1 overflow-y-auto p-4 flex flex-col gap-6">
+<!-- Header Info -->
+<div class="flex items-start gap-3">
+<div class="w-10 h-10 rounded bg-surface-variant border border-secondary flex items-center justify-center">
+<span class="material-symbols-outlined text-secondary">sensors</span>
+</div>
+<div>
+<h3 class="font-body-md text-on-surface font-bold">Photo-eye Sensor</h3>
+<p class="font-data-mono text-[11px] text-on-surface-variant">ID: PE-01A</p>
+</div>
+</div>
+<!-- Properties Form -->
+<div class="flex flex-col gap-4">
+<div class="flex flex-col gap-1">
+<label class="font-label-xs text-label-xs text-on-surface-variant uppercase">MP Location ID</label>
+<input class="bg-surface-container border border-outline-variant rounded p-2 font-data-mono text-[11px] text-on-surface focus:border-secondary focus:outline-none focus:ring-1 focus:ring-secondary transition-all w-full" type="text" value="LOC_ZONE_A_IN"/>
+</div>
+<div class="flex flex-col gap-1">
+<label class="font-label-xs text-label-xs text-on-surface-variant uppercase">Hardware Address</label>
+<input class="bg-surface-container border border-outline-variant rounded p-2 font-data-mono text-[11px] text-on-surface focus:border-secondary focus:outline-none transition-all w-full" type="text" value="I0.4"/>
+</div>
+<div class="flex flex-col gap-1">
+<label class="font-label-xs text-label-xs text-on-surface-variant uppercase">Trigger Condition</label>
+<select class="bg-surface-container border border-outline-variant rounded p-2 font-data-mono text-[11px] text-on-surface focus:border-secondary focus:outline-none w-full appearance-none cursor-pointer">
+<option selected="">Rising Edge</option>
+<option>Falling Edge</option>
+<option>Both Edges</option>
+</select>
+</div>
+<div class="h-px w-full bg-outline-variant my-2"></div>
+<div class="flex flex-col gap-2">
+<div class="flex justify-between items-center">
+<label class="font-label-xs text-label-xs text-on-surface-variant uppercase">Linked Telegram</label>
+<span class="bg-surface-variant px-2 py-0.5 rounded text-[10px] text-secondary font-data-mono">Active</span>
+</div>
+<select class="bg-surface-container border border-outline-variant rounded p-2 font-data-mono text-[11px] text-on-surface focus:border-secondary focus:outline-none w-full appearance-none cursor-pointer">
+<option>TG_TRACKING_UPDATE</option>
+<option>TG_STATUS_REQ</option>
+<option>TG_ERROR_RPT</option>
+</select>
+</div>
+<!-- Data Table for Telegram Mapping -->
+<div class="mt-2 border border-outline-variant rounded overflow-hidden">
+<table class="w-full text-left font-data-mono text-[11px]">
+<thead class="bg-surface-container-high border-b border-outline-variant">
+<tr>
+<th class="p-2 text-on-surface-variant font-normal">Byte</th>
+<th class="p-2 text-on-surface-variant font-normal">Field</th>
+<th class="p-2 text-on-surface-variant font-normal">Val</th>
+</tr>
+</thead>
+<tbody>
+<tr class="bg-surface-container border-b border-outline-variant/50">
+<td class="p-2 text-on-surface-variant">0-1</td>
+<td class="p-2 text-on-surface">MsgID</td>
+<td class="p-2 text-secondary">0x04</td>
+</tr>
+<tr class="bg-surface-container-high border-b border-outline-variant/50">
+<td class="p-2 text-on-surface-variant">2-5</td>
+<td class="p-2 text-on-surface">LocID</td>
+<td class="p-2 text-secondary">Dyn</td>
+</tr>
+<tr class="bg-surface-container">
+<td class="p-2 text-on-surface-variant">6-7</td>
+<td class="p-2 text-on-surface">Status</td>
+<td class="p-2 text-secondary">0x01</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div class="mt-auto pt-4 flex gap-2">
+<button class="btn-ghost flex-1 py-2 rounded text-sm hover:bg-surface-variant transition-colors">Revert</button>
+<button class="btn-primary flex-1 py-2 rounded text-sm font-semibold hover:bg-primary-fixed-dim transition-colors">Apply</button>
+</div>
+</div>
+</aside>
+</div>
+</div>
+</body></html>

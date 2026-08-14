@@ -1,0 +1,53 @@
+# .NET build output
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+artifacts/
+
+# Test results / coverage
+[Tt]est[Rr]esult*/
+[Cc]overage*/
+*.coverage
+*.coveragexml
+*.trx
+
+# NuGet
+*.nupkg
+*.snupkg
+.nuget/
+packages/
+project.lock.json
+
+# Visual Studio / Rider / VS Code
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*_i.c
+*_p.c
+*.rsp
+
+# ASP.NET / secrets — never commit
+appsettings.*.Local.json
+secrets.json
+*.pfx
+*.snk
+
+# Logs & OS cruft
+*.log
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+
+# Local session state
+.copilot/

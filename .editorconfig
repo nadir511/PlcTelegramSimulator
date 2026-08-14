@@ -1,0 +1,36 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+
+# C# / .NET backend
+[*.cs]
+indent_size = 4
+# Prefer clean, explicit code (see .github/instructions/csharp.instructions.md)
+dotnet_sort_system_directives_first = true
+csharp_using_directive_placement = outside_namespace:suggestion
+csharp_style_namespace_declarations = file_scoped:suggestion
+dotnet_style_qualification_for_field = false:suggestion
+dotnet_style_qualification_for_property = false:suggestion
+csharp_prefer_braces = true:suggestion
+dotnet_diagnostic.CS8600.severity = warning
+dotnet_diagnostic.CS8602.severity = warning
+dotnet_diagnostic.CS8618.severity = warning
+
+# Project / config files
+[*.{csproj,props,targets}]
+indent_size = 2
+
+[*.{json,yml,yaml}]
+indent_size = 2
+
+# Frontend (TypeScript/React) — Vite app has its own tooling; keep indentation consistent
+[*.{ts,tsx,js,jsx,css,html}]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false

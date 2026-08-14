@@ -1,0 +1,6 @@
+@PlcTelegramSimulator.Web_HostAddress = http://localhost:5244
+
+GET {{PlcTelegramSimulator.Web_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
