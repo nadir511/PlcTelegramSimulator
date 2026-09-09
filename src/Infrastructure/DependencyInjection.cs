@@ -14,6 +14,7 @@ public static class DependencyInjection
     {
         services.AddSingleton<ITelegramFramer, EofTelegramFramer>();
         services.AddSingleton<IPlcTransport, TcpPlcServer>();
+        services.AddSingleton(new SimulationCodecOptions());
         services.AddSingleton<IMpTelegramGateway, TcpMpTelegramGateway>();
         services.AddHostedService<TcpInboundTelegramRouter>();
         return services;

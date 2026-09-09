@@ -5,11 +5,12 @@ export const DATA_TYPES: readonly DataType[] = ['STRING', 'HEX', 'INT']
 
 /**
  * Special character appended to every telegram's byte form as its End-of-Telegram
- * terminator (e.g. `#` or `!`). Registry-wide and editable in the type registry;
- * an empty string means "no terminator". Mirrors the reference tool's frame
- * terminator so simulated telegrams end with a recognisable delimiter byte.
+ * terminator (e.g. `~` or `#`). Registry-wide and editable in the type registry.
+ * Defaults to `~` (`0x7E`), the eHub ATI frame terminator, so simulated telegrams
+ * end with a recognisable delimiter byte out of the box; clearing the field falls
+ * back to this default on connect (EOF framing always needs a terminator).
  */
-export const DEFAULT_END_OF_TELEGRAM = '#'
+export const DEFAULT_END_OF_TELEGRAM = '~'
 
 /** Name of the standard header group every telegram type starts with. */
 export const DEFAULT_HEADER_GROUP_NAME = 'DefaultTelegramHeader'

@@ -19,9 +19,9 @@ describe('SendTelegramPanel', () => {
   it('sends parsed ASCII bytes by default', () => {
     const onSend = vi.fn()
     render(<SendTelegramPanel connected onSend={onSend} />)
-    fireEvent.change(screen.getByLabelText(/payload/i), { target: { value: 'MP01#' } })
+    fireEvent.change(screen.getByLabelText(/payload/i), { target: { value: 'MP01' } })
     fireEvent.click(screen.getByRole('button', { name: /^send$/i }))
-    expect(onSend).toHaveBeenCalledWith([0x4d, 0x50, 0x30, 0x31, 0x23])
+    expect(onSend).toHaveBeenCalledWith([0x4d, 0x50, 0x30, 0x31])
   })
 
   it('sends parsed hex bytes when connected', () => {
@@ -37,10 +37,22 @@ describe('SendTelegramPanel', () => {
     const onSend = vi.fn()
     render(<SendTelegramPanel connected onSend={onSend} />)
     const input = screen.getByLabelText<HTMLTextAreaElement>(/payload/i)
-    fireEvent.change(input, { target: { value: 'MP01#' } })
+    fireEvent.change(input, { target: { value: 'MP01' } })
     fireEvent.click(screen.getByRole('button', { name: /^send$/i }))
-    expect(onSend).toHaveBeenCalledWith([0x4d, 0x50, 0x30, 0x31, 0x23])
-    expect(input.value).toBe('MP01#')
+    expect(onSend).toHaveBeenCalledWith([0x4d, 0x50, 0x30, 0x31])
+    expect(input.value).toBe('MP01')
+  })
+
+  it('notes that the configured End-of-Telegram is appended automatically', () => {
+    render(<SendTelegramPanel connected endOfTelegram="#" onSend={vi.fn()} />)
+    expect(
+      screen.getByText(/end-of-telegram .#. is appended automatically/i),
+    ).toBeInTheDocument()
+  })
+
+  it('renders no terminator note when End-of-Telegram is empty', () => {
+    render(<SendTelegramPanel connected endOfTelegram="" onSend={vi.fn()} />)
+    expect(screen.queryByText(/is appended automatically/i)).not.toBeInTheDocument()
   })
 
   it('flags invalid hex and blocks sending', () => {

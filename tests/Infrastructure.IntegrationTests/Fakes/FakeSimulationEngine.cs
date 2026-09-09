@@ -1,4 +1,5 @@
 using PlcTelegramSimulator.Application.Abstractions;
+using PlcTelegramSimulator.Application.Simulation;
 
 namespace PlcTelegramSimulator.Infrastructure.IntegrationTests.Fakes;
 
@@ -8,18 +9,19 @@ namespace PlcTelegramSimulator.Infrastructure.IntegrationTests.Fakes;
 public sealed class FakeSimulationEngine : ISimulationEngine
 {
     private readonly List<int> _acknowledged = [];
-    private readonly List<(int TelegramId, string Destination)> _resolved = [];
-    private readonly List<(string Tu, string Mp)> _arrivals = [];
+    private readonly List<(int TelegramId, string Destination, string? DestinationMp)> _resolved = [];
+    private readonly List<(string Tu, string Mp, int? TelegramId, EncodedMpTelegram? Telegram)> _arrivals = [];
 
     public IReadOnlyList<int> Acknowledged => _acknowledged;
 
-    public IReadOnlyList<(int TelegramId, string Destination)> Resolved => _resolved;
+    public IReadOnlyList<(int TelegramId, string Destination, string? DestinationMp)> Resolved => _resolved;
 
-    public IReadOnlyList<(string Tu, string Mp)> Arrivals => _arrivals;
+    public IReadOnlyList<(string Tu, string Mp, int? TelegramId, EncodedMpTelegram? Telegram)> Arrivals => _arrivals;
 
-    public bool TryReportArrival(string transportUnitId, string messagePointId)
+    public bool TryReportArrival(
+        string transportUnitId, string messagePointId, int? telegramId, EncodedMpTelegram? telegram)
     {
-        _arrivals.Add((transportUnitId, messagePointId));
+        _arrivals.Add((transportUnitId, messagePointId, telegramId, telegram));
         return true;
     }
 
@@ -29,9 +31,9 @@ public sealed class FakeSimulationEngine : ISimulationEngine
         return true;
     }
 
-    public bool TryResolveTransportOrder(int telegramId, string destination)
+    public bool TryResolveTransportOrder(int telegramId, string destination, string? destinationMp)
     {
-        _resolved.Add((telegramId, destination));
+        _resolved.Add((telegramId, destination, destinationMp));
         return true;
     }
 }

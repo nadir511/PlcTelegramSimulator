@@ -4,6 +4,13 @@
 export type DataType = 'STRING' | 'HEX' | 'INT'
 
 /**
+ * Which side a short value is padded on to reach its field width: `left`
+ * prepends the fill (e.g. `"1"` → `"000001"`), `right` appends it. Defaults to
+ * `right` when unset, preserving the historic zero-pad-on-the-right behaviour.
+ */
+export type PadSide = 'left' | 'right'
+
+/**
  * A single field in a telegram's byte layout. Byte offsets are **derived** from
  * the order and length of the preceding fields, so they are not stored here.
  */
@@ -18,6 +25,16 @@ export interface TelegramField {
   length: number
   /** Default payload value, interpreted per {@link dataType}. */
   defaultValue: string
+  /**
+   * Side a value shorter than {@link length} is padded on (STRING/HEX only).
+   * Defaults to `right` when unset. INT is numeric (big-endian) and ignores this.
+   */
+  padSide?: PadSide
+  /**
+   * Single Latin-1 character used to fill the padding (STRING/HEX only). A space
+   * is valid. Empty/unset means the `0x00` NUL byte, matching the historic fill.
+   */
+  padValue?: string
   /**
    * Computed field (e.g. a CRC-16 checksum): the simulator fills it at send
    * time, so it has no editable default and renders as `??` in previews.

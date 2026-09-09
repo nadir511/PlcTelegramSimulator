@@ -26,7 +26,7 @@ public sealed class MpOrchestratorTests
     {
         var orchestrator = Build(out var gateway, out var publisher, out _);
 
-        var telegramId = await orchestrator.ReportArrivalAsync("TU-1", "MP1", CancellationToken.None);
+        var telegramId = await orchestrator.ReportArrivalAsync("TU-1", "MP1", telegramId: null, telegram: null, CancellationToken.None);
 
         Assert.NotNull(telegramId);
         var sent = Assert.Single(gateway.Sent);
@@ -42,8 +42,8 @@ public sealed class MpOrchestratorTests
     {
         var orchestrator = Build(out var gateway, out _, out _);
 
-        await orchestrator.ReportArrivalAsync("TU-1", "MP1", CancellationToken.None);
-        var second = await orchestrator.ReportArrivalAsync("TU-1", "MP1", CancellationToken.None);
+        await orchestrator.ReportArrivalAsync("TU-1", "MP1", telegramId: null, telegram: null, CancellationToken.None);
+        var second = await orchestrator.ReportArrivalAsync("TU-1", "MP1", telegramId: null, telegram: null, CancellationToken.None);
 
         Assert.Null(second);
         Assert.Single(gateway.Sent);
@@ -51,13 +51,33 @@ public sealed class MpOrchestratorTests
     }
 
     [Fact]
+    public async Task ReportArrival_ReusedIdAfterRestart_SupersedesStaleRequestAndStillSends()
+    {
+        // A prior run left id 1 held/faulted for TU-OLD; a restart re-mints id 1 for a new TU.
+        // The reused id must supersede the stale entry rather than drop the new arrival (ADR-0009).
+        var orchestrator = Build(out var gateway, out var publisher, out _);
+        await orchestrator.ReportArrivalAsync("TU-OLD", "MP1", telegramId: 1, telegram: null, CancellationToken.None);
+
+        var second = await orchestrator.ReportArrivalAsync("TU-NEW", "MP1", telegramId: 1, telegram: null, CancellationToken.None);
+
+        Assert.Equal(1, second);
+        Assert.Equal(2, gateway.Sent.Count);
+        Assert.Equal("TU-NEW", gateway.Sent[^1].TransportUnitId);
+        Assert.Equal(1, orchestrator.OutstandingCount);
+
+        // The fresh (TU-NEW) request is the one now correlatable under id 1.
+        await orchestrator.ResolveAsync(1, "DEST-Z", destinationMp: null, CancellationToken.None);
+        Assert.Equal("TU-NEW", Assert.Single(publisher.TransportOrders).TransportUnitId);
+    }
+
+    [Fact]
     public async Task Resolve_MatchesByTelegramId_AndPushesDestination()
     {
         var orchestrator = Build(out _, out var publisher, out _);
-        var telegramId = await orchestrator.ReportArrivalAsync("TU-1", "MP1", CancellationToken.None);
+        var telegramId = await orchestrator.ReportArrivalAsync("TU-1", "MP1", telegramId: null, telegram: null, CancellationToken.None);
         orchestrator.Acknowledge(telegramId!.Value);
 
-        await orchestrator.ResolveAsync(telegramId.Value, "DEST-Z", CancellationToken.None);
+        await orchestrator.ResolveAsync(telegramId.Value, "DEST-Z", destinationMp: null, CancellationToken.None);
 
         var order = Assert.Single(publisher.TransportOrders);
         Assert.Equal("TU-1", order.TransportUnitId);
@@ -70,12 +90,12 @@ public sealed class MpOrchestratorTests
     public async Task Resolve_OutOfOrder_MatchesEachRequest()
     {
         var orchestrator = Build(out _, out var publisher, out _);
-        var a = await orchestrator.ReportArrivalAsync("TU-A", "MP1", CancellationToken.None);
-        var b = await orchestrator.ReportArrivalAsync("TU-B", "MP3", CancellationToken.None);
+        var a = await orchestrator.ReportArrivalAsync("TU-A", "MP1", telegramId: null, telegram: null, CancellationToken.None);
+        var b = await orchestrator.ReportArrivalAsync("TU-B", "MP3", telegramId: null, telegram: null, CancellationToken.None);
 
         // The transport order for B arrives before A's.
-        await orchestrator.ResolveAsync(b!.Value, "DEST-B", CancellationToken.None);
-        await orchestrator.ResolveAsync(a!.Value, "DEST-A", CancellationToken.None);
+        await orchestrator.ResolveAsync(b!.Value, "DEST-B", destinationMp: null, CancellationToken.None);
+        await orchestrator.ResolveAsync(a!.Value, "DEST-A", destinationMp: null, CancellationToken.None);
 
         Assert.Equal(2, publisher.TransportOrders.Count);
         Assert.Equal("TU-B", publisher.TransportOrders[0].TransportUnitId);
@@ -89,7 +109,7 @@ public sealed class MpOrchestratorTests
     {
         var orchestrator = Build(out _, out var publisher, out _);
 
-        await orchestrator.ResolveAsync(4242, "DEST", CancellationToken.None);
+        await orchestrator.ResolveAsync(4242, "DEST", destinationMp: null, CancellationToken.None);
 
         Assert.Empty(publisher.TransportOrders);
     }
@@ -98,10 +118,10 @@ public sealed class MpOrchestratorTests
     public async Task Resolve_DuplicateTo_PushesOnce()
     {
         var orchestrator = Build(out _, out var publisher, out _);
-        var id = await orchestrator.ReportArrivalAsync("TU-1", "MP1", CancellationToken.None);
+        var id = await orchestrator.ReportArrivalAsync("TU-1", "MP1", telegramId: null, telegram: null, CancellationToken.None);
 
-        await orchestrator.ResolveAsync(id!.Value, "DEST-Z", CancellationToken.None);
-        await orchestrator.ResolveAsync(id.Value, "DEST-Z", CancellationToken.None);
+        await orchestrator.ResolveAsync(id!.Value, "DEST-Z", destinationMp: null, CancellationToken.None);
+        await orchestrator.ResolveAsync(id.Value, "DEST-Z", destinationMp: null, CancellationToken.None);
 
         Assert.Single(publisher.TransportOrders);
     }
@@ -111,14 +131,16 @@ public sealed class MpOrchestratorTests
     {
         var options = new MpOrchestratorOptions { AcknowledgementTimeout = TimeSpan.FromSeconds(2) };
         var orchestrator = Build(out _, out var publisher, out var time, options);
-        await orchestrator.ReportArrivalAsync("TU-1", "MP1", CancellationToken.None);
+        await orchestrator.ReportArrivalAsync("TU-1", "MP1", telegramId: null, telegram: null, CancellationToken.None);
 
         time.Advance(TimeSpan.FromSeconds(3));
         await orchestrator.CheckTimeoutsAsync(CancellationToken.None);
 
         var timedOut = Assert.Single(publisher.Timeouts);
         Assert.Equal(MpTimeoutReason.Acknowledgement, timedOut.Reason);
-        Assert.Equal(0, orchestrator.OutstandingCount);
+
+        // ADR-0015 "hold": the request is retained (not released) so a late TO can still resolve it.
+        Assert.Equal(1, orchestrator.OutstandingCount);
     }
 
     [Fact]
@@ -130,7 +152,7 @@ public sealed class MpOrchestratorTests
             TransportOrderTimeout = TimeSpan.FromSeconds(10),
         };
         var orchestrator = Build(out _, out var publisher, out var time, options);
-        var id = await orchestrator.ReportArrivalAsync("TU-1", "MP1", CancellationToken.None);
+        var id = await orchestrator.ReportArrivalAsync("TU-1", "MP1", telegramId: null, telegram: null, CancellationToken.None);
         orchestrator.Acknowledge(id!.Value);
 
         time.Advance(TimeSpan.FromSeconds(11));
@@ -141,13 +163,76 @@ public sealed class MpOrchestratorTests
     }
 
     [Fact]
+    public async Task Resolve_WithDestinationMp_PopulatesTransportOrder()
+    {
+        var orchestrator = Build(out _, out var publisher, out _);
+        var id = await orchestrator.ReportArrivalAsync("TU-1", "MP1", telegramId: null, telegram: null, CancellationToken.None);
+
+        await orchestrator.ResolveAsync(id!.Value, "SORTER_3", "MP-12", CancellationToken.None);
+
+        var order = Assert.Single(publisher.TransportOrders);
+        Assert.Equal("SORTER_3", order.Destination);
+        Assert.Equal("MP-12", order.DestinationMp);
+    }
+
+    [Fact]
+    public async Task Resolve_WithoutDestinationMp_LeavesItNull()
+    {
+        var orchestrator = Build(out _, out var publisher, out _);
+        var id = await orchestrator.ReportArrivalAsync("TU-1", "MP1", telegramId: null, telegram: null, CancellationToken.None);
+
+        await orchestrator.ResolveAsync(id!.Value, "SORTER_3", destinationMp: null, CancellationToken.None);
+
+        var order = Assert.Single(publisher.TransportOrders);
+        Assert.Null(order.DestinationMp);
+    }
+
+    [Fact]
+    public async Task Resolve_AfterTimeoutFault_StillReleasesBin_WithDestinationMp()
+    {
+        // A transport-order-only outer client sends no ACK, so the short ACK deadline fires first.
+        // ADR-0015 "hold": the fault must not strand the request; a later genuine TO still resolves it.
+        var options = new MpOrchestratorOptions { AcknowledgementTimeout = TimeSpan.FromSeconds(2) };
+        var orchestrator = Build(out _, out var publisher, out var time, options);
+        var id = await orchestrator.ReportArrivalAsync("TU-1", "MP1", telegramId: null, telegram: null, CancellationToken.None);
+
+        time.Advance(TimeSpan.FromSeconds(3));
+        await orchestrator.CheckTimeoutsAsync(CancellationToken.None);
+
+        // The bin faulted but is held; a real transport order arrives afterwards.
+        await orchestrator.ResolveAsync(id!.Value, "SORTER_3", "MP-12", CancellationToken.None);
+
+        Assert.Single(publisher.Timeouts);
+        var order = Assert.Single(publisher.TransportOrders);
+        Assert.Equal("TU-1", order.TransportUnitId);
+        Assert.Equal("SORTER_3", order.Destination);
+        Assert.Equal("MP-12", order.DestinationMp);
+        Assert.Equal(0, orchestrator.OutstandingCount);
+    }
+
+    [Fact]
     public async Task ReportArrival_AllocatesUniqueTelegramIds()
     {
         var orchestrator = Build(out _, out _, out _);
 
-        var a = await orchestrator.ReportArrivalAsync("TU-A", "MP1", CancellationToken.None);
-        var b = await orchestrator.ReportArrivalAsync("TU-B", "MP2", CancellationToken.None);
+        var a = await orchestrator.ReportArrivalAsync("TU-A", "MP1", telegramId: null, telegram: null, CancellationToken.None);
+        var b = await orchestrator.ReportArrivalAsync("TU-B", "MP2", telegramId: null, telegram: null, CancellationToken.None);
 
         Assert.NotEqual(a, b);
+    }
+
+    [Fact]
+    public async Task ReportArrival_ThreadsEncodedTelegram_AndUsesProvidedId()
+    {
+        var orchestrator = Build(out var gateway, out _, out _);
+        var encoded = new EncodedMpTelegram(new byte[] { 10, 20, 30, 40 });
+
+        var id = await orchestrator.ReportArrivalAsync(
+            "TU-1", "MP1", telegramId: 4242, encoded, CancellationToken.None);
+
+        var sent = Assert.Single(gateway.Sent);
+        Assert.Same(encoded, sent.Encoded);
+        Assert.Equal(4242, id);
+        Assert.Equal(4242, sent.TelegramId);
     }
 }

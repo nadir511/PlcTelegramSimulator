@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text;
 
 namespace PlcTelegramSimulator.Domain;
 
@@ -12,18 +13,25 @@ public sealed class ListenerConfig
     /// <summary>Upper bound for <see cref="ProcessingDelay"/> in milliseconds.</summary>
     public const int MaxProcessingDelayMs = 60_000;
 
+    /// <summary>Maximum number of characters allowed in the End-of-Telegram terminator.</summary>
+    public const int MaxEndOfTelegramLength = 8;
+
     private ListenerConfig(
         string bindAddress,
         int sendPort,
         int receivePort,
         TimeSpan processingDelay,
-        bool autoAcceptReconnections)
+        bool autoAcceptReconnections,
+        string endOfTelegram,
+        byte[] terminator)
     {
         BindAddress = bindAddress;
         SendPort = sendPort;
         ReceivePort = receivePort;
         ProcessingDelay = processingDelay;
         AutoAcceptReconnections = autoAcceptReconnections;
+        EndOfTelegram = endOfTelegram;
+        Terminator = terminator;
     }
 
     /// <summary>Local interface to bind (e.g. <c>0.0.0.0</c> for all interfaces).</summary>
@@ -42,6 +50,16 @@ public sealed class ListenerConfig
     public bool AutoAcceptReconnections { get; }
 
     /// <summary>
+    /// The End-of-Telegram terminator string (e.g. <c>#</c> or <c>~</c>) as configured in
+    /// the telegram type registry. The transport appends its <see cref="Terminator"/> bytes
+    /// to every outbound telegram and splits inbound frames on it (ADR-0018).
+    /// </summary>
+    public string EndOfTelegram { get; }
+
+    /// <summary>The Latin-1 bytes of <see cref="EndOfTelegram"/> used to frame telegrams.</summary>
+    public IReadOnlyList<byte> Terminator { get; }
+
+    /// <summary>
     /// Validates the supplied values and builds a <see cref="ListenerConfig"/>.
     /// </summary>
     /// <exception cref="DomainValidationException">
@@ -52,7 +70,8 @@ public sealed class ListenerConfig
         int sendPort,
         int receivePort,
         int processingDelayMs,
-        bool autoAcceptReconnections)
+        bool autoAcceptReconnections,
+        string endOfTelegram = "~")
     {
         var errors = new Dictionary<string, string>();
 
@@ -87,6 +106,8 @@ public sealed class ListenerConfig
             errors["processingDelayMs"] = $"Processing delay must be between 0 and {MaxProcessingDelayMs} ms.";
         }
 
+        var terminator = ValidateEndOfTelegram(endOfTelegram, errors);
+
         if (errors.Count > 0)
         {
             throw new DomainValidationException(errors);
@@ -97,6 +118,41 @@ public sealed class ListenerConfig
             sendPort,
             receivePort,
             TimeSpan.FromMilliseconds(processingDelayMs),
-            autoAcceptReconnections);
+            autoAcceptReconnections,
+            endOfTelegram,
+            terminator);
+    }
+
+    /// <summary>
+    /// Validates the End-of-Telegram terminator and returns its Latin-1 bytes. A delimiter is
+    /// required to frame telegrams on the wire in both directions, so an empty terminator is
+    /// rejected; every character must be a single Latin-1 byte (0..255) since the wire is byte
+    /// oriented. Adds a keyed <c>endOfTelegram</c> error instead of throwing so callers can
+    /// aggregate it with the other field errors.
+    /// </summary>
+    private static byte[] ValidateEndOfTelegram(string endOfTelegram, IDictionary<string, string> errors)
+    {
+        if (string.IsNullOrEmpty(endOfTelegram))
+        {
+            errors["endOfTelegram"] = "End of Telegram terminator is required.";
+            return [];
+        }
+
+        if (endOfTelegram.Length > MaxEndOfTelegramLength)
+        {
+            errors["endOfTelegram"] = $"End of Telegram must be at most {MaxEndOfTelegramLength} characters.";
+            return [];
+        }
+
+        foreach (var ch in endOfTelegram)
+        {
+            if (ch > 0xFF)
+            {
+                errors["endOfTelegram"] = "End of Telegram must contain only single-byte (Latin-1) characters.";
+                return [];
+            }
+        }
+
+        return Encoding.Latin1.GetBytes(endOfTelegram);
     }
 }

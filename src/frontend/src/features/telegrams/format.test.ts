@@ -21,6 +21,8 @@ const field = (overrides: Partial<TelegramField> = {}): TelegramField => ({
   dataType: overrides.dataType ?? 'STRING',
   length: overrides.length ?? 1,
   defaultValue: overrides.defaultValue ?? '',
+  padSide: overrides.padSide,
+  padValue: overrides.padValue,
   auto: overrides.auto,
 })
 
@@ -73,6 +75,64 @@ describe('encodeField', () => {
 
   it('renders auto (computed) fields as unknown bytes', () => {
     expect(encodeField(field({ dataType: 'HEX', length: 2, auto: true }))).toEqual([null, null])
+  })
+})
+
+describe('encodeField padding', () => {
+  it('right-pads STRING with 0x00 by default (unchanged behaviour)', () => {
+    // No padSide/padValue set → historic right-pad-with-NUL.
+    expect(encodeField(field({ dataType: 'STRING', length: 4, defaultValue: 'Hi' }))).toEqual([
+      0x48, 0x69, 0x00, 0x00,
+    ])
+  })
+
+  it('left-pads a short value with the configured character (000001 example)', () => {
+    // TelegramId width 6, value "1", pad left with "0" → "000001".
+    expect(
+      encodeField(
+        field({ dataType: 'STRING', length: 6, defaultValue: '1', padSide: 'left', padValue: '0' }),
+      ),
+    ).toEqual([0x30, 0x30, 0x30, 0x30, 0x30, 0x31])
+  })
+
+  it('right-pads with the configured character', () => {
+    expect(
+      encodeField(
+        field({ dataType: 'STRING', length: 4, defaultValue: 'AB', padSide: 'right', padValue: '*' }),
+      ),
+    ).toEqual([0x41, 0x42, 0x2a, 0x2a])
+  })
+
+  it('accepts a space as the pad character', () => {
+    expect(
+      encodeField(
+        field({ dataType: 'STRING', length: 4, defaultValue: 'X', padSide: 'left', padValue: ' ' }),
+      ),
+    ).toEqual([0x20, 0x20, 0x20, 0x58])
+  })
+
+  it('pads HEX on the chosen side with the configured fill byte', () => {
+    expect(
+      encodeField(
+        field({ dataType: 'HEX', length: 3, defaultValue: 'FF', padSide: 'left', padValue: '0' }),
+      ),
+    ).toEqual([0x30, 0x30, 0xff])
+  })
+
+  it('leaves INT numeric — padSide/padValue do not apply', () => {
+    expect(
+      encodeField(
+        field({ dataType: 'INT', length: 4, defaultValue: '258', padSide: 'left', padValue: '0' }),
+      ),
+    ).toEqual([0x00, 0x00, 0x01, 0x02])
+  })
+
+  it('renders an out-of-range pad character as an unknown byte', () => {
+    expect(
+      encodeField(
+        field({ dataType: 'STRING', length: 3, defaultValue: 'A', padSide: 'right', padValue: '€' }),
+      ),
+    ).toEqual([0x41, null, null])
   })
 })
 
@@ -185,6 +245,20 @@ describe('validateField', () => {
   it('skips value validation for auto fields', () => {
     expect(validateField(field({ dataType: 'HEX', length: 2, auto: true, defaultValue: 'zz' }), []))
       .toEqual({})
+  })
+
+  it('accepts a single Latin-1 pad character (including a space)', () => {
+    expect(validateField(field({ padValue: '0' }), []).padValue).toBeUndefined()
+    expect(validateField(field({ padValue: ' ' }), []).padValue).toBeUndefined()
+    expect(validateField(field({ padValue: '' }), []).padValue).toBeUndefined()
+  })
+
+  it('rejects a multi-character pad value', () => {
+    expect(validateField(field({ padValue: '00' }), []).padValue).toMatch(/single character/i)
+  })
+
+  it('rejects a pad character outside Latin-1', () => {
+    expect(validateField(field({ padValue: '€' }), []).padValue).toMatch(/latin-1/i)
   })
 })
 

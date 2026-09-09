@@ -44,17 +44,21 @@ public sealed class MpOrchestrator
 
     /// <summary>
     /// Reports that <paramref name="transportUnitId"/> reached <paramref name="messagePointId"/>:
-    /// allocates a correlation <c>TelegramId</c>, registers the pending request, sends the MP
-    /// telegram, and notifies the canvas. Idempotent per bin — because a bin blocks at its MP it has
-    /// at most one outstanding request, so a repeat arrival is ignored and returns
-    /// <see langword="null"/>.
+    /// uses the frontend-minted <paramref name="telegramId"/> as the correlation key (or allocates one
+    /// when none is supplied, ADR-0009), registers the pending request, sends the MP telegram, and
+    /// notifies the canvas. Idempotent per bin — because a bin blocks at its MP it has at most one
+    /// outstanding request, so a repeat arrival is ignored and returns <see langword="null"/>.
     /// </summary>
     /// <returns>
-    /// The allocated <c>TelegramId</c>, or <see langword="null"/> if the bin already has an
+    /// The correlation <c>TelegramId</c>, or <see langword="null"/> if the bin already has an
     /// outstanding request.
     /// </returns>
     public async Task<int?> ReportArrivalAsync(
-        string transportUnitId, string messagePointId, CancellationToken cancellationToken)
+        string transportUnitId,
+        string messagePointId,
+        int? telegramId,
+        EncodedMpTelegram? telegram,
+        CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(transportUnitId);
         ArgumentException.ThrowIfNullOrWhiteSpace(messagePointId);
@@ -67,13 +71,24 @@ public sealed class MpOrchestrator
             return null;
         }
 
-        var telegram = new MpTelegram(NextTelegramId(), transportUnitId, messagePointId);
-        _registry.Register(PendingMpRequest.Create(telegram, _timeProvider.GetUtcNow()));
+        var mpTelegram = new MpTelegram(
+            telegramId ?? NextTelegramId(), transportUnitId, messagePointId, telegram);
+        var superseded = _registry.Register(PendingMpRequest.Create(mpTelegram, _timeProvider.GetUtcNow()));
+        if (superseded is not null)
+        {
+            // ADR-0009: the frontend mints ids and resets its sequence per run, while this registry
+            // holds faulted requests across runs (ADR-0015). A reused id is a stale prior-run entry;
+            // superseding it keeps the new arrival correlatable instead of dropping it.
+            _logger.LogWarning(
+                "Superseded a stale request for TelegramId {TelegramId} (previous transport unit {PreviousTransportUnitId}); "
+                    + "the id was reused, most likely after a simulation restart.",
+                superseded.TelegramId, superseded.TransportUnitId);
+        }
 
-        await _gateway.SendAsync(telegram, cancellationToken);
-        await _publisher.MpReportedAsync(telegram, cancellationToken);
+        await _gateway.SendAsync(mpTelegram, cancellationToken);
+        await _publisher.MpReportedAsync(mpTelegram, cancellationToken);
 
-        return telegram.TelegramId;
+        return mpTelegram.TelegramId;
     }
 
     /// <summary>Records the transport ACK (Status A) for a request; ignores an unknown/duplicate ACK.</summary>
@@ -88,9 +103,15 @@ public sealed class MpOrchestrator
     /// <summary>
     /// Applies an inbound transport order to its originating request (matched by
     /// <paramref name="telegramId"/>) and pushes the destination to the canvas. An unmatched,
-    /// duplicate, or late TO is ignored idempotently.
+    /// duplicate, or late TO is ignored idempotently. A request that already faulted on timeout is
+    /// still resolvable (ADR-0015 "hold"), so a genuine late TO releases the held bin.
     /// </summary>
-    public async Task ResolveAsync(int telegramId, string destination, CancellationToken cancellationToken)
+    /// <param name="telegramId">Correlation key of the originating MP request.</param>
+    /// <param name="destination">The next destination the bin should route toward.</param>
+    /// <param name="destinationMp">The next message point id, when the order supplies it; otherwise <see langword="null"/>.</param>
+    /// <param name="cancellationToken">Cancels the canvas notification.</param>
+    public async Task ResolveAsync(
+        int telegramId, string destination, string? destinationMp, CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(destination);
 
@@ -102,11 +123,16 @@ public sealed class MpOrchestrator
             return;
         }
 
-        var order = new TransportOrder(telegramId, request.TransportUnitId, request.MessagePointId, destination);
+        var order = new TransportOrder(
+            telegramId, request.TransportUnitId, request.MessagePointId, destination, destinationMp);
         await _publisher.TransportOrderAppliedAsync(order, cancellationToken);
     }
 
-    /// <summary>Sweeps expired requests (missing ACK or TO) and surfaces each as a fault.</summary>
+    /// <summary>
+    /// Sweeps expired requests (missing ACK or TO) and surfaces each as a fault. Faulted requests are
+    /// <b>retained</b> in the registry (ADR-0015 "hold"), so a late transport order can still resolve
+    /// the bin; the registry marks each request so it faults at most once.
+    /// </summary>
     public async Task CheckTimeoutsAsync(CancellationToken cancellationToken)
     {
         var expired = _registry.CollectExpired(

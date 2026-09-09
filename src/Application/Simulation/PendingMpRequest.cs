@@ -11,13 +11,19 @@ namespace PlcTelegramSimulator.Application.Simulation;
 /// <param name="Phase">Where the request sits in the two-phase lifecycle.</param>
 /// <param name="SentAt">When the MP telegram was sent (drives the ACK timeout).</param>
 /// <param name="AcknowledgedAt">When the ACK arrived, if it has (drives the TO timeout).</param>
+/// <param name="Faulted">
+/// Whether a timeout has already surfaced a fault for this request (ADR-0015). A faulted request is
+/// <b>retained</b> (not removed) so a late/out-of-order transport order can still resolve it; the flag
+/// makes the fault "sticky" so the periodic sweep reports it at most once.
+/// </param>
 public sealed record PendingMpRequest(
     int TelegramId,
     string TransportUnitId,
     string MessagePointId,
     MpRequestPhase Phase,
     DateTimeOffset SentAt,
-    DateTimeOffset? AcknowledgedAt)
+    DateTimeOffset? AcknowledgedAt,
+    bool Faulted = false)
 {
     /// <summary>Creates a freshly-sent request in the <see cref="MpRequestPhase.PendingAck"/> phase.</summary>
     public static PendingMpRequest Create(MpTelegram telegram, DateTimeOffset sentAt)
@@ -30,7 +36,8 @@ public sealed record PendingMpRequest(
             telegram.MessagePointId,
             MpRequestPhase.PendingAck,
             sentAt,
-            AcknowledgedAt: null);
+            AcknowledgedAt: null,
+            Faulted: false);
     }
 
     /// <summary>Transitions to <see cref="MpRequestPhase.Acknowledged"/>, stamping the ACK time.</summary>

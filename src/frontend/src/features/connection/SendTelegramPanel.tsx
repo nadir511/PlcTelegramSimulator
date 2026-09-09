@@ -7,6 +7,11 @@ type InputMode = 'hex' | 'ascii'
 interface SendTelegramPanelProps {
   /** Only a connected session can receive a manual telegram. */
   connected: boolean
+  /**
+   * Registry-wide End-of-Telegram terminator the backend appends on send. Shown as
+   * a hint so the operator knows not to type it into the payload themselves.
+   */
+  endOfTelegram?: string
   onSend: (payload: readonly number[]) => void
 }
 
@@ -43,7 +48,7 @@ function ModeToggle({ mode, onChange }: ModeToggleProps) {
 }
 
 /** Right column: compose a telegram (hex or ASCII) and send it to the peer. */
-export function SendTelegramPanel({ connected, onSend }: SendTelegramPanelProps) {
+export function SendTelegramPanel({ connected, endOfTelegram, onSend }: SendTelegramPanelProps) {
   const [mode, setMode] = useState<InputMode>('ascii')
   const [text, setText] = useState('')
 
@@ -66,7 +71,7 @@ export function SendTelegramPanel({ connected, onSend }: SendTelegramPanelProps)
     onSend(bytes)
   }
 
-  const placeholder = mode === 'hex' ? '02 4D 50 30 31 03' : 'MP01'
+  const placeholder = mode === 'hex' ? '4D 50 30 31' : 'MP01'
   const previewId = 'telegram-preview'
 
   return (
@@ -113,6 +118,12 @@ export function SendTelegramPanel({ connected, onSend }: SendTelegramPanelProps)
             </span>
           )}
         </p>
+
+        {endOfTelegram ? (
+          <p className="font-label-xs text-label-xs text-on-surface-variant/70">
+            {`End-of-Telegram “${endOfTelegram}” is appended automatically — don't type it here.`}
+          </p>
+        ) : null}
 
         <button
           type="button"

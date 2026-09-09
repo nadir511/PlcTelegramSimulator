@@ -26,6 +26,10 @@ public sealed class TcpPlcServer : IPlcTransport, IAsyncDisposable
 {
     private static readonly IReadOnlyList<byte> AckPayload = new byte[] { 0x06 };
 
+    // Pre-start fallback only ('~'); StartAsync overwrites this from the session's
+    // configured End-of-Telegram before any client can connect, send, or be framed.
+    private static readonly byte[] DefaultTerminator = { 0x7E };
+
     private readonly ITelegramFramer _framer;
     private readonly ILogger<TcpPlcServer> _logger;
 
@@ -40,6 +44,7 @@ public sealed class TcpPlcServer : IPlcTransport, IAsyncDisposable
     private int _rxClients;
     private int _txClients;
     private NetworkStream? _txStream;
+    private volatile byte[] _terminator = DefaultTerminator;
 
     private CancellationTokenSource? _sessionCts;
     private TcpListener? _rxListener;
@@ -106,10 +111,12 @@ public sealed class TcpPlcServer : IPlcTransport, IAsyncDisposable
             _sessionCts = new CancellationTokenSource();
             var token = _sessionCts.Token;
             _running = true;
+            _terminator = config.Terminator as byte[] ?? config.Terminator.ToArray();
 
             SetStatus(ListenerStatus.Listening, null);
             RaiseTraffic(TrafficEntry.System(
-                $"Listener bound to {config.BindAddress} (rx {config.ReceivePort} / tx {config.SendPort})"));
+                $"Listener bound to {config.BindAddress} (rx {config.ReceivePort} / tx {config.SendPort})"
+                + $"; End-of-Telegram '{config.EndOfTelegram}'"));
 
             _rxLoop = Task.Run(() => AcceptLoopAsync(rxListener, PortRole.Receive, config, token), token);
             _txLoop = Task.Run(() => AcceptLoopAsync(txListener, PortRole.Send, config, token), token);
@@ -182,7 +189,7 @@ public sealed class TcpPlcServer : IPlcTransport, IAsyncDisposable
             return;
         }
 
-        var frame = _framer.Encode(payload);
+        var frame = _framer.Encode(payload, _terminator);
 
         await _sendGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -284,7 +291,7 @@ public sealed class TcpPlcServer : IPlcTransport, IAsyncDisposable
         try
         {
             var pipe = PipeReader.Create(stream, new StreamPipeReaderOptions(leaveOpen: true));
-            await foreach (var frame in _framer.ReadFramesAsync(pipe, OnFramingError, token).ConfigureAwait(false))
+            await foreach (var frame in _framer.ReadFramesAsync(pipe, _terminator, OnFramingError, token).ConfigureAwait(false))
             {
                 if (role == PortRole.Receive)
                 {
@@ -346,7 +353,7 @@ public sealed class TcpPlcServer : IPlcTransport, IAsyncDisposable
 
     private async Task WriteFrameAsync(NetworkStream stream, IReadOnlyList<byte> payload, CancellationToken token)
     {
-        var frame = _framer.Encode(payload);
+        var frame = _framer.Encode(payload, _terminator);
         await stream.WriteAsync(frame, token).ConfigureAwait(false);
     }
 

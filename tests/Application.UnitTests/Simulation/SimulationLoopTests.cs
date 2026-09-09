@@ -33,7 +33,8 @@ public sealed class SimulationLoopTests
     {
         var loop = Build(out var gateway, out var publisher, out _);
 
-        await loop.ProcessAsync(new SimulationInput.ReportArrival("TU-1", "MP1"), CancellationToken.None);
+        await loop.ProcessAsync(
+            new SimulationInput.ReportArrival("TU-1", "MP1", TelegramId: null, Telegram: null), CancellationToken.None);
 
         var sent = Assert.Single(gateway.Sent);
         Assert.Equal("TU-1", sent.TransportUnitId);
@@ -43,19 +44,35 @@ public sealed class SimulationLoopTests
     }
 
     [Fact]
+    public async Task ProcessAsync_ReportArrival_ThreadsEncodedTelegram_OntoGateway()
+    {
+        var loop = Build(out var gateway, out _, out _);
+        var encoded = new EncodedMpTelegram(new byte[] { 1, 2, 3, 4 });
+
+        await loop.ProcessAsync(
+            new SimulationInput.ReportArrival("TU-1", "MP1", TelegramId: 77, encoded), CancellationToken.None);
+
+        var sent = Assert.Single(gateway.Sent);
+        Assert.Same(encoded, sent.Encoded);
+        Assert.Equal(77, sent.TelegramId);
+    }
+
+    [Fact]
     public async Task ProcessAsync_AcknowledgeThenResolve_PushesDestination()
     {
         var loop = Build(out var gateway, out var publisher, out _);
-        await loop.ProcessAsync(new SimulationInput.ReportArrival("TU-1", "MP1"), CancellationToken.None);
+        await loop.ProcessAsync(
+            new SimulationInput.ReportArrival("TU-1", "MP1", TelegramId: null, Telegram: null), CancellationToken.None);
         var telegramId = gateway.Sent[0].TelegramId;
 
         await loop.ProcessAsync(new SimulationInput.AcknowledgeReceipt(telegramId), CancellationToken.None);
         await loop.ProcessAsync(
-            new SimulationInput.ResolveTransportOrder(telegramId, "DEST-Z"), CancellationToken.None);
+            new SimulationInput.ResolveTransportOrder(telegramId, "DEST-Z", "MP-9"), CancellationToken.None);
 
         var order = Assert.Single(publisher.TransportOrders);
         Assert.Equal("TU-1", order.TransportUnitId);
         Assert.Equal("DEST-Z", order.Destination);
+        Assert.Equal("MP-9", order.DestinationMp);
         Assert.Equal(0, loop.OutstandingCount);
     }
 
@@ -64,14 +81,17 @@ public sealed class SimulationLoopTests
     {
         var options = new MpOrchestratorOptions { AcknowledgementTimeout = TimeSpan.FromSeconds(2) };
         var loop = Build(out _, out var publisher, out var time, options);
-        await loop.ProcessAsync(new SimulationInput.ReportArrival("TU-1", "MP1"), CancellationToken.None);
+        await loop.ProcessAsync(
+            new SimulationInput.ReportArrival("TU-1", "MP1", TelegramId: null, Telegram: null), CancellationToken.None);
 
         time.Advance(TimeSpan.FromSeconds(3));
         await loop.ProcessAsync(new SimulationInput.SweepTimeouts(), CancellationToken.None);
 
         var timedOut = Assert.Single(publisher.Timeouts);
         Assert.Equal(MpTimeoutReason.Acknowledgement, timedOut.Reason);
-        Assert.Equal(0, loop.OutstandingCount);
+
+        // ADR-0015 "hold": the faulted request is retained until a genuine TO resolves it.
+        Assert.Equal(1, loop.OutstandingCount);
     }
 
     [Fact]
@@ -79,8 +99,8 @@ public sealed class SimulationLoopTests
     {
         var loop = Build(out _, out _, out _);
 
-        Assert.Throws<ArgumentException>(() => loop.TryReportArrival(" ", "MP1"));
-        Assert.Throws<ArgumentException>(() => loop.TryReportArrival("TU-1", " "));
+        Assert.Throws<ArgumentException>(() => loop.TryReportArrival(" ", "MP1", telegramId: null, telegram: null));
+        Assert.Throws<ArgumentException>(() => loop.TryReportArrival("TU-1", " ", telegramId: null, telegram: null));
     }
 
     [Fact]
@@ -88,7 +108,7 @@ public sealed class SimulationLoopTests
     {
         var loop = Build(out _, out _, out _);
 
-        Assert.Throws<ArgumentException>(() => loop.TryResolveTransportOrder(1, " "));
+        Assert.Throws<ArgumentException>(() => loop.TryResolveTransportOrder(1, " ", null));
     }
 
     [Fact]
@@ -98,7 +118,7 @@ public sealed class SimulationLoopTests
         await loop.StartAsync(CancellationToken.None);
         try
         {
-            Assert.True(loop.TryReportArrival("TU-1", "MP1"));
+            Assert.True(loop.TryReportArrival("TU-1", "MP1", telegramId: null, telegram: null));
 
             await WaitUntilAsync(() => gateway.Sent.Count == 1);
             Assert.Single(gateway.Sent);
@@ -117,7 +137,7 @@ public sealed class SimulationLoopTests
         try
         {
             Assert.True(loop.TryAcknowledge(4242));
-            Assert.True(loop.TryResolveTransportOrder(4242, "DEST"));
+            Assert.True(loop.TryResolveTransportOrder(4242, "DEST", null));
 
             // Give the pump a moment; nothing should have been published.
             await Task.Delay(50);

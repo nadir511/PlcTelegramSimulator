@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { TelegramsPage } from './TelegramsPage'
 
 /** Field rows are those carrying a `Field NN name` input (not group/placeholder rows). */
@@ -8,6 +8,10 @@ function fieldRows(): HTMLElement[] {
     .getAllByRole('row')
     .filter((row) => within(row).queryByLabelText(/^Field \d+ name$/))
 }
+
+// The registry persists to localStorage, so isolate each test from the last.
+beforeEach(() => localStorage.clear())
+afterEach(() => localStorage.clear())
 
 describe('TelegramsPage', () => {
   it('lists the seeded telegram types with a delete action each', () => {
@@ -26,6 +30,26 @@ describe('TelegramsPage', () => {
         within(registry).getByRole('button', { name: new RegExp(`Delete ${code} telegram type`, 'i') }),
       ).toBeInTheDocument()
     }
+  })
+
+  it('shows each telegram type total field length on its chip', () => {
+    render(<TelegramsPage />)
+    const registry = screen.getByRole('group', { name: /telegram types/i })
+    // Every seeded type carries the 12-byte common header (6 fields x 2 bytes).
+    expect(within(registry).getAllByText('12 B')).toHaveLength(5)
+  })
+
+  it('updates a type chip total when a saved edit changes its field lengths', () => {
+    render(<TelegramsPage />)
+    const registry = () => screen.getByRole('group', { name: /telegram types/i })
+    expect(within(registry()).getAllByText('12 B')).toHaveLength(5)
+
+    // Widen the MP Sender field 2 -> 6 and save: the MP header becomes 16 bytes.
+    fireEvent.change(screen.getByLabelText('Field 00 length'), { target: { value: '6' } })
+    fireEvent.click(screen.getByRole('button', { name: /save structure/i }))
+
+    expect(within(registry()).getByText('16 B')).toBeInTheDocument()
+    expect(within(registry()).getAllByText('12 B')).toHaveLength(4)
   })
 
   it('shows the selected type structure and its derived total length', () => {
@@ -179,10 +203,10 @@ describe('TelegramsPage', () => {
     render(<TelegramsPage />)
 
     const eot = screen.getByLabelText('End of Telegram character')
-    expect(eot).toHaveValue('#')
+    expect(eot).toHaveValue('~')
     // The default terminator is part of every telegram: 12 header bytes + 1.
     expect(screen.getByText('Total Length: 13 Bytes')).toBeInTheDocument()
-    expect(screen.getByLabelText('Raw stream output').textContent).toContain('4D 50 00 00 23')
+    expect(screen.getByLabelText('Raw stream output').textContent).toContain('4D 50 00 00 7E')
     expect(screen.getByRole('group', { name: /End of Telegram bytes/i })).toBeInTheDocument()
 
     // Changing it re-encodes the trailing byte ('!' = 0x21).
@@ -200,5 +224,33 @@ describe('TelegramsPage', () => {
   it('no longer offers XML import in the builder', () => {
     render(<TelegramsPage />)
     expect(screen.queryByRole('button', { name: /import xml/i })).not.toBeInTheDocument()
+  })
+
+  it('persists an added type and saved structure across a remount', () => {
+    const { unmount } = render(<TelegramsPage />)
+
+    // Add a new type...
+    fireEvent.click(screen.getByRole('button', { name: /add type/i }))
+    fireEvent.change(screen.getByLabelText('Code'), { target: { value: 'sr' } })
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Sensor Reset' } })
+    fireEvent.click(screen.getByRole('button', { name: /create/i }))
+
+    // ...and save a structural edit on it.
+    fireEvent.change(screen.getByLabelText('Field 00 length'), { target: { value: '6' } })
+    fireEvent.click(screen.getByRole('button', { name: /save structure/i }))
+
+    // Reload the page from scratch: the saved registry rehydrates from storage.
+    unmount()
+    render(<TelegramsPage />)
+
+    expect(
+      within(screen.getByRole('group', { name: /telegram types/i })).getByRole('button', {
+        name: /Sensor Reset/i,
+      }),
+    ).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /Sensor Reset/i }))
+    expect(screen.getByRole('heading', { name: /Message Builder: SR/ })).toBeInTheDocument()
+    expect(screen.getByText('Total Length: 17 Bytes')).toBeInTheDocument()
   })
 })

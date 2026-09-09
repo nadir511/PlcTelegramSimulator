@@ -113,8 +113,11 @@ export function pxToMeters(px: number, units: Units): number {
   return units.pixelsPerMeter > 0 ? px / units.pixelsPerMeter : 0
 }
 
-/** Fixed on-canvas size (px) of a sensor point. */
+/** Default sensor diameter (px) when a sensor omits/defaults its `widthMeters`. */
 export const SENSOR_SIZE_PX = 16
+
+/** Smallest a sensor point renders on-canvas so it stays clickable. */
+const SENSOR_MIN_PX = 10
 
 /** Default on-canvas box (px) for environment components (bin source / sink). */
 export const ENVIRONMENT_SIZE_PX = { width: 64, height: 48 } as const
@@ -128,7 +131,7 @@ const MIN_BELT_PX = 8
  * decline, and merge belts all render at the same thickness so they line up when
  * connected end-to-end.
  */
-export const TRANSPORT_BELT_WIDTH_METERS = 0.6
+export const TRANSPORT_BELT_WIDTH_METERS = 1
 
 /** The on-canvas belt thickness (px) for a transport component at the given scale. */
 export function beltWidthPx(component: Component, units: Units): number {
@@ -142,7 +145,9 @@ export function beltWidthPx(component: Component, units: Units): number {
  */
 export function componentSizePx(component: Component, units: Units): { width: number; height: number } {
   if (isSensorKind(component.kind)) {
-    return { width: SENSOR_SIZE_PX, height: SENSOR_SIZE_PX }
+    // Sensors are round; their diameter scales with the (editable) sensor size.
+    const diameter = Math.max(SENSOR_MIN_PX, metersToPx(component.geometry.widthMeters, units))
+    return { width: diameter, height: diameter }
   }
   if (isEnvironmentKind(component.kind)) {
     return { width: ENVIRONMENT_SIZE_PX.width, height: ENVIRONMENT_SIZE_PX.height }
@@ -162,6 +167,55 @@ export function componentSizePx(component: Component, units: Units): { width: nu
     width: Math.max(MIN_BELT_PX, metersToPx(component.geometry.lengthMeters, units)),
     height: beltWidthPx(component, units),
   }
+}
+
+/**
+ * A component's axis-aligned catch rectangle in stage px (top-left corner + size),
+ * matching how the stage positions the component group at `component.position`. Used
+ * for sink drop-zones and other footprint hit-tests.
+ */
+export function componentRect(component: Component, units: Units): Rect {
+  const size = componentSizePx(component, units)
+  return { x: component.position.x, y: component.position.y, width: size.width, height: size.height }
+}
+
+/** An axis-aligned rectangle in stage pixels (top-left corner + size). */
+export interface Rect {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+/** Normalizes a rect that may have negative extents (dragged up / left) to positive size. */
+export function normalizeRect(rect: Rect): Rect {
+  return {
+    x: rect.width < 0 ? rect.x + rect.width : rect.x,
+    y: rect.height < 0 ? rect.y + rect.height : rect.y,
+    width: Math.abs(rect.width),
+    height: Math.abs(rect.height),
+  }
+}
+
+/** Whether two axis-aligned rectangles overlap (a shared edge counts as overlap). */
+export function rectsOverlap(a: Rect, b: Rect): boolean {
+  return a.x <= b.x + b.width && a.x + a.width >= b.x && a.y <= b.y + b.height && a.y + a.height >= b.y
+}
+
+/**
+ * Ids of every component whose footprint intersects a marquee rectangle (world px).
+ * AABB overlap, rotation-agnostic — matching how sink / sensor hit-rects are built —
+ * so a rubber-band drag can select several components at once.
+ */
+export function componentsInMarquee(
+  components: readonly Component[],
+  units: Units,
+  marquee: Rect,
+): string[] {
+  const box = normalizeRect(marquee)
+  return components
+    .filter((component) => rectsOverlap(componentRect(component, units), box))
+    .map((component) => component.id)
 }
 
 /** A point at `deg` degrees (screen space, clockwise, y-down) on a circle. */
@@ -293,6 +347,53 @@ export function resolvePortWorld(
   return anchor ? portWorldPos(component, anchor.pos) : null
 }
 
+/** A port resolved to its world position, tagged with its owning component. */
+export interface PortWorld {
+  id: string
+  role: PortRole
+  componentId: string
+  world: Vec2
+}
+
+/** Every port in the layout, resolved to its world (stage) position. */
+export function portsWithWorld(components: readonly Component[], units: Units): PortWorld[] {
+  return components.flatMap((component) =>
+    componentPorts(component, units).map((port) => ({
+      id: port.id,
+      role: port.role,
+      componentId: component.id,
+      world: portWorldPos(component, port.pos),
+    })),
+  )
+}
+
+/**
+ * The nearest port that can accept a link dragged from `fromPortId` — an opposite
+ * role on a *different* component — within `maxDistance` (px) of `point`, or `null`.
+ * Powers drag-to-connect snapping so a plug links to a socket without a pixel-perfect
+ * drop; final validity (duplicates etc.) is still enforced by {@link canConnect}.
+ */
+export function nearestConnectablePort(
+  ports: readonly PortWorld[],
+  fromPortId: string,
+  fromRole: PortRole,
+  point: Vec2,
+  maxDistance: number,
+): PortWorld | null {
+  const fromComponent = componentIdOfPort(fromPortId)
+  let best: PortWorld | null = null
+  let bestDistance = maxDistance
+  for (const port of ports) {
+    if (port.role === fromRole || port.componentId === fromComponent) continue
+    const distance = Math.hypot(port.world.x - point.x, port.world.y - point.y)
+    if (distance <= bestDistance) {
+      bestDistance = distance
+      best = port
+    }
+  }
+  return best
+}
+
 function findPort(layout: CanvasLayout, portId: string): Port | null {
   const component = layout.components.find((candidate) => candidate.id === componentIdOfPort(portId))
   return component?.ports.find((port) => port.id === portId) ?? null
@@ -330,6 +431,117 @@ export function canConnect(
 }
 
 // ---------------------------------------------------------------------------
+// Magnetic component snapping ("puzzle-piece" connect)
+// ---------------------------------------------------------------------------
+
+/**
+ * How close (stage px) two opposite-role ports must be for components to snap
+ * together edge-to-edge and form a connection. Shared by the live drag snap
+ * (SimulationStage) and the commit-time reconcile ({@link applyComponentSnap}).
+ */
+export const PORT_SNAP_DISTANCE_PX = 30
+
+/** A magnetic snap of a dragged component onto a stationary neighbour's port. */
+export interface ComponentSnap {
+  /** The dragged component's port that snaps onto {@link targetPortId}. */
+  dragPortId: string
+  /** The stationary port (on another component) it snaps onto. */
+  targetPortId: string
+  /** The dragged component's new position so the two ports coincide (flush). */
+  position: Vec2
+}
+
+/**
+ * The best magnetic snap for a component being dragged to `draggedPosition`: the
+ * smallest distance between one of its ports and an **opposite-role** port on a
+ * *different* component, within `maxDistance` (px). Returns the dragged
+ * component's snapped `position` (translated so the two ports coincide, i.e. the
+ * pieces meet edge-to-edge) plus the port pair, or `null` when nothing is in
+ * range. Geometry only — the caller still validates the link with
+ * {@link canConnect}. Translation only: the dragged component keeps its rotation,
+ * so same-orientation belts click together flush.
+ */
+export function nearestComponentSnap(
+  components: readonly Component[],
+  units: Units,
+  draggedId: string,
+  draggedPosition: Vec2,
+  maxDistance: number,
+): ComponentSnap | null {
+  const dragged = components.find((component) => component.id === draggedId)
+  if (!dragged) return null
+  const moved: Component = { ...dragged, position: draggedPosition }
+  const dragPorts = componentPorts(moved, units).map((port) => ({
+    id: port.id,
+    role: port.role,
+    world: portWorldPos(moved, port.pos),
+  }))
+  const targets = portsWithWorld(
+    components.filter((component) => component.id !== draggedId),
+    units,
+  )
+
+  let best: ComponentSnap | null = null
+  let bestDistance = maxDistance
+  for (const dragPort of dragPorts) {
+    for (const target of targets) {
+      if (target.role === dragPort.role) continue
+      const distance = Math.hypot(target.world.x - dragPort.world.x, target.world.y - dragPort.world.y)
+      if (distance <= bestDistance) {
+        bestDistance = distance
+        best = {
+          dragPortId: dragPort.id,
+          targetPortId: target.id,
+          position: {
+            x: draggedPosition.x + (target.world.x - dragPort.world.x),
+            y: draggedPosition.y + (target.world.y - dragPort.world.y),
+          },
+        }
+      }
+    }
+  }
+  return best
+}
+
+/**
+ * Applies a component move under the magnet model: places the component at
+ * `position`, then **reconciles its connections against geometry** — any of the
+ * moved component's links whose ports are now further apart than `snapDistance`
+ * are dropped (pulling pieces apart disconnects them), and, when `snap` is
+ * supplied, the freshly-adjacent pair is linked (normalised / de-duped by
+ * {@link canConnect}). Pure: returns a new layout, mutating nothing.
+ */
+export function applyComponentSnap(
+  layout: CanvasLayout,
+  id: string,
+  position: Vec2,
+  snap: { dragPortId: string; targetPortId: string } | null,
+  snapDistance: number,
+): CanvasLayout {
+  const components = layout.components.map((component) =>
+    component.id === id ? { ...component, position } : component,
+  )
+  const moved = components.find((component) => component.id === id)
+  if (!moved) return layout
+
+  const movedPortIds = new Set(moved.ports.map((port) => port.id))
+  let connections = layout.connections.filter((connection) => {
+    if (!movedPortIds.has(connection.from) && !movedPortIds.has(connection.to)) return true
+    const from = resolvePortWorld(components, layout.units, connection.from)
+    const to = resolvePortWorld(components, layout.units, connection.to)
+    if (!from || !to) return true
+    return Math.hypot(from.x - to.x, from.y - to.y) <= snapDistance
+  })
+
+  if (snap) {
+    const result = canConnect({ ...layout, components, connections }, snap.dragPortId, snap.targetPortId)
+    if (result.ok && result.connection) connections = [...connections, result.connection]
+  }
+
+  return { ...layout, components, connections }
+}
+
+// ---------------------------------------------------------------------------
 // Id generation
 // ---------------------------------------------------------------------------
 
@@ -347,15 +559,24 @@ export function nextBinId(): string {
   return `bin-${Date.now().toString(36)}-${binSequence}`
 }
 
-/** A random transport-unit id, e.g. `TU-8F3A0C`, carried in the telegram's `TU` field. */
-export function nextTuId(): string {
-  let suffix = ''
-  for (let i = 0; i < 6; i += 1) {
-    suffix += Math.floor(Math.random() * 36)
+/** Fallback transport-unit id width when no telegram field binds the bin's tuId. */
+export const DEFAULT_TU_ID_LENGTH = 6
+
+/**
+ * A random transport-unit id of exactly `length` upper-case base-36 characters, with
+ * no prefix, carried in the telegram's `TU` field. Sized to the field that will carry
+ * it so the id fills that slot precisely (ADR-0009) — e.g. `nextTuId(6)` → `8F3A0C`.
+ * A non-positive/invalid length falls back to {@link DEFAULT_TU_ID_LENGTH}.
+ */
+export function nextTuId(length: number): string {
+  const width = Number.isInteger(length) && length > 0 ? length : DEFAULT_TU_ID_LENGTH
+  let id = ''
+  for (let i = 0; i < width; i += 1) {
+    id += Math.floor(Math.random() * 36)
       .toString(36)
       .toUpperCase()
   }
-  return `TU-${suffix}`
+  return id
 }
 
 // ---------------------------------------------------------------------------
@@ -407,8 +628,8 @@ function defaultGeometry(kind: ComponentKind): Geometry {
     case 'sink':
       return { lengthMeters: 1, widthMeters: 1 }
     default:
-      // Sensors: a small footprint (rendered as a fixed point regardless).
-      return { lengthMeters: 0.4, widthMeters: 0.4 }
+      // Sensors: a 1 m footprint by default (the MP circle diameter is derived from width).
+      return { lengthMeters: 1, widthMeters: 1 }
   }
 }
 
@@ -447,7 +668,7 @@ export function defaultUnits(): Units {
 
 /** The default (empty) bin source. */
 export function defaultBinSource(): BinSource {
-  return { id: 'bin-source', types: [] }
+  return { id: 'bin-source', types: [], spacingMeters: 0.3 }
 }
 
 /** The default global control-logic tunables. */
@@ -636,6 +857,8 @@ function sanitizeBinSource(value: unknown): BinSource {
   return {
     id: isNonEmptyString(value.id) ? value.id : 'bin-source',
     types: sanitizeBinTypes(value.types),
+    spacingMeters:
+      isFiniteNumber(value.spacingMeters) && value.spacingMeters >= 0 ? value.spacingMeters : 0.3,
   }
 }
 
@@ -733,6 +956,244 @@ export interface SensorRect {
   height: number
 }
 
+/**
+ * A poly-line (world px) a bin travels along, following the belt centrelines from the
+ * Bin Source through each connected transport component. `cumulative[i]` is the arc
+ * length from the route start to vertex `i`; `length` is the whole path.
+ */
+export interface Route {
+  points: Vec2[]
+  cumulative: number[]
+  length: number
+  /**
+   * True when the chain terminates at a Sink: a bin reaching the route end has left the
+   * system and is removed (rather than parking at a dead-end belt).
+   */
+  endsAtSink?: boolean
+}
+
+/** How finely a curved belt's centreline is sampled (max degrees per segment). */
+const ROUTE_ARC_STEP_DEG = 6
+
+/** Two world points closer than this (px) are treated as the same route vertex. */
+const ROUTE_SEAM_EPSILON_PX = 0.5
+
+/**
+ * How far (stage px) a belt's exit may sit from a Sink and still deliver bins into it
+ * without an explicit port connection. Matched to the magnetic snap range so a Sink
+ * dropped at the end of a line drains bins even if it didn't quite click into the
+ * port — dropping a drain at a line's end should consume bins.
+ */
+const SINK_CATCH_MARGIN_PX = PORT_SNAP_DISTANCE_PX
+
+/**
+ * The Sink whose catch area (its box, expanded by `margin` px) contains `point`,
+ * nearest by centre — or `undefined`. Lets a belt whose exit lands on or near a Sink
+ * deliver bins into it even without a perfect port connection.
+ */
+function nearestSinkAtPoint(layout: CanvasLayout, point: Vec2, margin: number): Component | undefined {
+  let best: Component | undefined
+  let bestDistance = Infinity
+  for (const component of layout.components) {
+    if (component.kind !== 'sink') continue
+    const rect = componentRect(component, layout.units)
+    if (
+      point.x < rect.x - margin ||
+      point.x > rect.x + rect.width + margin ||
+      point.y < rect.y - margin ||
+      point.y > rect.y + rect.height + margin
+    ) {
+      continue
+    }
+    const distance = Math.hypot(rect.x + rect.width / 2 - point.x, rect.y + rect.height / 2 - point.y)
+    if (distance < bestDistance) {
+      bestDistance = distance
+      best = component
+    }
+  }
+  return best
+}
+
+/**
+ * Samples a transport belt's travel centreline (entry → exit) as world-space points.
+ * Straight / merge / incline / decline belts are one segment along the mid-line;
+ * curved and U belts are sampled along their arc so a bin visibly turns through the bend.
+ */
+export function beltCenterline(component: Component, units: Units): Vec2[] {
+  if (hasCurveAngle(component.kind)) {
+    const curve = curveGeometry(component, units)
+    const steps = Math.max(1, Math.ceil(curve.angleDeg / ROUTE_ARC_STEP_DEG))
+    const points: Vec2[] = []
+    for (let i = 0; i <= steps; i += 1) {
+      const local = pointOnCircle(
+        curve.cx,
+        curve.cy,
+        curve.centerRadius,
+        curve.startDeg + (curve.angleDeg * i) / steps,
+      )
+      points.push(portWorldPos(component, local))
+    }
+    return points
+  }
+  const size = componentSizePx(component, units)
+  return [
+    portWorldPos(component, { x: 0, y: size.height / 2 }),
+    portWorldPos(component, { x: size.width, y: size.height / 2 }),
+  ]
+}
+
+/** Cumulative arc lengths for a poly-line, plus its total length. */
+function measurePolyline(points: readonly Vec2[]): { cumulative: number[]; length: number } {
+  const cumulative = [0]
+  for (let i = 1; i < points.length; i += 1) {
+    const previous = points[i - 1]
+    const point = points[i]
+    cumulative.push(cumulative[i - 1] + Math.hypot(point.x - previous.x, point.y - previous.y))
+  }
+  return { cumulative, length: cumulative[cumulative.length - 1] ?? 0 }
+}
+
+/**
+ * Builds the path bins follow: starting from the belt fed by the Bin Source's out port,
+ * it concatenates each belt's centreline and hops out → in along the connection graph
+ * until it reaches a non-transport component (sink / sensor), a dead end, or a cycle.
+ * Returns `null` when no Bin Source feeds a transport component (bins have no conveyor
+ * to ride), letting callers fall back to the plain preview path.
+ */
+export function buildRoute(layout: CanvasLayout): Route | null {
+  const source = layout.components.find((component) => component.kind === 'bin-source')
+  if (!source) return null
+
+  const componentsById = new Map(layout.components.map((component) => [component.id, component]))
+  const beltOwningInPort = (portId: string): Component | undefined => {
+    const owner = componentsById.get(componentIdOfPort(portId))
+    return owner && isTransportKind(owner.kind) ? owner : undefined
+  }
+
+  const sourceOutPorts = new Set(
+    source.ports.filter((port) => port.role === 'out').map((port) => port.id),
+  )
+  const feed = layout.connections.find((connection) => sourceOutPorts.has(connection.from))
+  let belt = feed ? beltOwningInPort(feed.to) : undefined
+
+  const points: Vec2[] = []
+  const visited = new Set<string>()
+  let sink: Component | undefined
+  while (belt && !visited.has(belt.id)) {
+    visited.add(belt.id)
+    for (const point of beltCenterline(belt, layout.units)) {
+      const last = points[points.length - 1]
+      if (last && Math.hypot(last.x - point.x, last.y - point.y) < ROUTE_SEAM_EPSILON_PX) continue
+      points.push(point)
+    }
+    const outPort = belt.ports.find((port) => port.role === 'out')
+    const onward = outPort
+      ? layout.connections.find((connection) => connection.from === outPort.id)
+      : undefined
+    const nextBelt = onward ? beltOwningInPort(onward.to) : undefined
+    if (nextBelt) {
+      belt = nextBelt
+      continue
+    }
+    // The chain leaves the transport network. If this belt's exit flows into a Sink —
+    // by an explicit connection, or simply because a Sink sits at its dead-end — carry
+    // the path into that sink's centre so bins visibly enter it (and are then removed).
+    const target = onward ? componentsById.get(componentIdOfPort(onward.to)) : undefined
+    if (target && target.kind === 'sink') {
+      sink = target
+    } else {
+      const end = points[points.length - 1]
+      if (end) sink = nearestSinkAtPoint(layout, end, SINK_CATCH_MARGIN_PX)
+    }
+    belt = undefined
+  }
+
+  if (points.length < 2) return null
+  if (sink) {
+    const size = componentSizePx(sink, layout.units)
+    points.push({ x: sink.position.x + size.width / 2, y: sink.position.y + size.height / 2 })
+  }
+  const { cumulative, length } = measurePolyline(points)
+  return { points, cumulative, length, endsAtSink: Boolean(sink) }
+}
+
+/** Maps an arc-length distance along a route to its world (stage) point. */
+export function pointAtDistance(route: Route, distance: number): Vec2 {
+  const { points, cumulative, length } = route
+  const clamped = Math.max(0, Math.min(distance, length))
+  let segment = 1
+  while (segment < cumulative.length - 1 && cumulative[segment] < clamped) segment += 1
+  const start = cumulative[segment - 1]
+  const span = cumulative[segment] - start
+  const t = span > 0 ? (clamped - start) / span : 0
+  const a = points[segment - 1]
+  const b = points[segment]
+  return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }
+}
+
+/**
+ * The arc-length distance (px from the route start) of the point on `route` nearest
+ * to `point`: `point` is projected onto every segment and the closest projection
+ * wins. Lets a component sitting over the belt be located along the path a bin rides.
+ */
+function nearestDistanceAlongRoute(route: Route, point: Vec2): number {
+  const { points, cumulative } = route
+  let bestDistance = 0
+  let bestSqr = Infinity
+  for (let i = 1; i < points.length; i += 1) {
+    const a = points[i - 1]
+    const b = points[i]
+    const dx = b.x - a.x
+    const dy = b.y - a.y
+    const segLenSqr = dx * dx + dy * dy
+    const t = segLenSqr > 0 ? Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / segLenSqr)) : 0
+    const projX = a.x + dx * t
+    const projY = a.y + dy * t
+    const sqr = (point.x - projX) ** 2 + (point.y - projY) ** 2
+    if (sqr < bestSqr) {
+      bestSqr = sqr
+      bestDistance = cumulative[i - 1] + Math.sqrt(segLenSqr) * t
+    }
+  }
+  return bestDistance
+}
+
+/**
+ * The message-point ids (a sensor's `mpId`) in the order a bin travelling the built
+ * route encounters them — each MP sensor's centre is projected onto the route and the
+ * ids are sorted by that arc-length distance. Feeds the demo next-MP resolver so a
+ * frontend-only run can route a bin from one MP to the next.
+ *
+ * Falls back to left-to-right (x) order when no route can be built (no Bin Source
+ * feeding a belt), and returns `[]` when the layout has no MP sensors.
+ */
+export function orderedMpIdsAlongRoute(layout: CanvasLayout): string[] {
+  const mpSensors = layout.components.flatMap((component) => {
+    const mpId = component.kind === 'mp-sensor' ? component.sensor?.mpId : undefined
+    return mpId ? [{ component, mpId }] : []
+  })
+  if (mpSensors.length === 0) return []
+
+  const route = buildRoute(layout)
+  if (!route) {
+    return [...mpSensors]
+      .sort((a, b) => a.component.position.x - b.component.position.x)
+      .map((entry) => entry.mpId)
+  }
+
+  return mpSensors
+    .map((entry) => {
+      const size = componentSizePx(entry.component, layout.units)
+      const center = {
+        x: entry.component.position.x + size.width / 2,
+        y: entry.component.position.y + size.height / 2,
+      }
+      return { mpId: entry.mpId, distance: nearestDistanceAlongRoute(route, center) }
+    })
+    .sort((a, b) => a.distance - b.distance)
+    .map((entry) => entry.mpId)
+}
+
 /** Largest frame delta integrated in one step (guards against tab-refocus jumps). */
 const MAX_STEP_MS = 100
 
@@ -742,6 +1203,9 @@ const LANE_TOLERANCE_PX = 10
 /** Shared empty set so the common (no-blocking) path allocates nothing. */
 const NO_BLOCKED: ReadonlySet<string> = new Set<string>()
 
+/** Shared empty sink list so the common (no-sink) path allocates nothing. */
+const NO_SINKS: readonly SensorRect[] = []
+
 /** Whether a bin's centre currently lies within a sensor's pixel bounds. */
 export function binOverSensor(bin: Bin, sensor: SensorRect): boolean {
   return (
@@ -749,6 +1213,28 @@ export function binOverSensor(bin: Bin, sensor: SensorRect): boolean {
     bin.x <= sensor.x + sensor.width &&
     bin.y >= sensor.y &&
     bin.y <= sensor.y + sensor.height
+  )
+}
+
+/**
+ * The bin glyph's approximate radius (px). A bin counts as having *reached* a Sink when
+ * its drawn footprint — not merely its centre point — overlaps the sink's catch area, so
+ * a bin arriving flush at a Sink at a belt's end is still consumed.
+ */
+export const BIN_FOOTPRINT_PX = 10
+
+/**
+ * Whether a bin has reached a Sink: its footprint (a {@link BIN_FOOTPRINT_PX} radius
+ * around its centre) overlaps the sink's catch rectangle. More forgiving than the
+ * centre-point {@link binOverSensor}, so removal doesn't hinge on a pixel-perfect
+ * overlap at the sink's edge — a bin that visibly arrives at any Sink vanishes.
+ */
+export function binReachesSink(bin: Bin, sink: SensorRect, radius = BIN_FOOTPRINT_PX): boolean {
+  return (
+    bin.x + radius >= sink.x &&
+    bin.x - radius <= sink.x + sink.width &&
+    bin.y + radius >= sink.y &&
+    bin.y - radius <= sink.y + sink.height
   )
 }
 
@@ -770,6 +1256,18 @@ export interface AdvanceInput {
   blocked?: ReadonlySet<string>
   /** Minimum gap (px) a trailing bin keeps behind the bin ahead on its lane. */
   minGapPx?: number
+  /**
+   * Sink pixel rects. A bin whose centre enters a sink has reached its
+   * destination and is removed from the preview. Defaults to none.
+   */
+  sinks?: readonly SensorRect[]
+  /**
+   * The conveyor path bins ride. When present, bins advance by arc length along this
+   * route (following belt orientation and turns) instead of drifting along +x, and
+   * each bin's progress is tracked in its `dist` field. Defaults to undefined, which
+   * keeps the plain +x preview for layouts with no connected conveyor.
+   */
+  route?: Route | null
 }
 
 /** Result of a preview step: surviving bins and the sensors a bin now sits over. */
@@ -780,15 +1278,96 @@ export interface AdvanceResult {
 }
 
 /**
- * Advances every bin along +x by one step and reports which sensors a bin now
- * covers. Bins whose `tuId` is in `blocked` hold position (they are awaiting a
- * transport order from the backend, ADR-0012), and a moving bin is clamped so it
- * never overtakes a bin ahead of it on the same lane — so a bin waiting at a
- * message point queues the bins behind it, exactly as on the real conveyor.
+ * Advances every bin by one preview step and reports which sensors a bin now covers.
+ * When a {@link Route} is supplied, bins ride the conveyor path (following belt
+ * orientation and turns); otherwise they drift along +x (the fallback for layouts with
+ * no connected conveyor). Bins whose `tuId` is in `blocked` hold position (they are
+ * awaiting a transport order from the backend, ADR-0012), and a moving bin is clamped so
+ * it never overtakes the bin ahead of it — so a bin waiting at a message point queues
+ * the bins behind it, exactly as on the real conveyor.
  *
  * Pure: no timers, no DOM — the page drives it from `requestAnimationFrame`.
  */
-export function advance({
+export function advance(input: AdvanceInput): AdvanceResult {
+  return input.route ? advanceAlongRoute(input, input.route) : advanceAlongX(input)
+}
+
+/** A bin's progress along the route (arc-length px); 0 for a freshly released bin. */
+function routeDist(bin: Bin): number {
+  return bin.dist ?? 0
+}
+
+/**
+ * Route-following motion: each bin's `dist` (arc length from the route start) grows by
+ * the scaled step unless it is blocked, and a bin is clamped to keep `minGapPx` behind
+ * the bin ahead of it on the shared single-lane route. Bins are removed only when they
+ * reach a sink (positional) or leave the stage; a bin that runs out of route parks at
+ * the end and backs the queue up behind it.
+ */
+function advanceAlongRoute(input: AdvanceInput, route: Route): AdvanceResult {
+  const {
+    bins,
+    sensors,
+    dtMs,
+    speed,
+    maxX,
+    baseSpeedPxPerSec,
+    blocked = NO_BLOCKED,
+    minGapPx = 0,
+    sinks = NO_SINKS,
+  } = input
+  const step = Math.max(0, Math.min(dtMs, MAX_STEP_MS))
+  const ds = (baseSpeedPxPerSec * step * speed) / 1000
+
+  // Resolve front-most (largest dist) bins first so trailing bins queue behind their
+  // already-settled progress along the shared route.
+  const order = bins
+    .map((_, index) => index)
+    .sort((a, b) => routeDist(bins[b]) - routeDist(bins[a]))
+  const settled: number[] = []
+  const placedByIndex = new Map<number, Bin>()
+
+  for (const index of order) {
+    const bin = bins[index]
+    const current = routeDist(bin)
+    let target = blocked.has(bin.tuId) ? current : current + ds
+    for (const aheadDist of settled) {
+      if (aheadDist < current) continue // only bins ahead of this one constrain it
+      target = Math.min(target, aheadDist - minGapPx)
+    }
+    const nextDist = Math.max(current, Math.min(target, route.length))
+    const position = pointAtDistance(route, nextDist)
+    const placed: Bin = { ...bin, dist: nextDist, x: position.x, y: position.y }
+    settled.push(nextDist)
+    placedByIndex.set(index, placed)
+  }
+
+  const moved: Bin[] = []
+  const sinkEnd = route.endsAtSink === true
+  for (let index = 0; index < bins.length; index += 1) {
+    const placed = placedByIndex.get(index)
+    if (!placed) continue
+    if (placed.x > maxX) continue
+    // A bin that reaches the sink at the end of the chain has left the system — drop it.
+    if (sinkEnd && (placed.dist ?? 0) >= route.length - 1e-6) continue
+    // A bin whose footprint reaches any sink (mid-line or at a dead-end) is likewise removed.
+    if (sinks.length > 0 && sinks.some((sink) => binReachesSink(placed, sink))) continue
+    moved.push(placed)
+  }
+
+  const triggered = new Set<string>()
+  for (const sensor of sensors) {
+    if (moved.some((bin) => binOverSensor(bin, sensor))) triggered.add(sensor.id)
+  }
+  return { bins: moved, triggered }
+}
+
+/**
+ * Plain +x preview motion (no connected conveyor): every bin drifts right, queuing on
+ * the same lane and stopping at sinks / the stage edge. Kept as the fallback so a
+ * partially-wired layout still animates.
+ */
+function advanceAlongX({
   bins,
   sensors,
   dtMs,
@@ -797,6 +1376,7 @@ export function advance({
   baseSpeedPxPerSec,
   blocked = NO_BLOCKED,
   minGapPx = 0,
+  sinks = NO_SINKS,
 }: AdvanceInput): AdvanceResult {
   const step = Math.max(0, Math.min(dtMs, MAX_STEP_MS))
   const dx = (baseSpeedPxPerSec * step * speed) / 1000
@@ -825,7 +1405,11 @@ export function advance({
   const moved: Bin[] = []
   for (let index = 0; index < bins.length; index += 1) {
     const placed = placedByIndex.get(index)
-    if (placed && placed.x <= maxX) moved.push(placed)
+    if (!placed) continue
+    if (placed.x > maxX) continue
+    // A bin whose footprint reaches any sink has arrived at its destination — drop it.
+    if (sinks.length > 0 && sinks.some((sink) => binReachesSink(placed, sink))) continue
+    moved.push(placed)
   }
 
   const triggered = new Set<string>()

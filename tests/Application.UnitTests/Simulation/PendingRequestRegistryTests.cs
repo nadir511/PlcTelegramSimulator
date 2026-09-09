@@ -23,12 +23,20 @@ public sealed class PendingRequestRegistryTests
     }
 
     [Fact]
-    public void Register_DuplicateTelegramId_Throws()
+    public void Register_DuplicateTelegramId_SupersedesStaleRequestAndReturnsIt()
     {
         var registry = new PendingRequestRegistry();
-        registry.Register(NewRequest(1));
+        Assert.Null(registry.Register(NewRequest(1, tu: "TU-OLD")));
 
-        Assert.Throws<InvalidOperationException>(() => registry.Register(NewRequest(1)));
+        // A reused id (e.g. after a simulation restart) evicts the stale entry rather than throwing.
+        var superseded = registry.Register(NewRequest(1, tu: "TU-NEW"));
+
+        Assert.NotNull(superseded);
+        Assert.Equal("TU-OLD", superseded!.TransportUnitId);
+        Assert.Equal(1, registry.Count);
+
+        var resolved = registry.Resolve(1);
+        Assert.Equal("TU-NEW", resolved!.TransportUnitId);
     }
 
     [Fact]
@@ -74,7 +82,7 @@ public sealed class PendingRequestRegistryTests
     }
 
     [Fact]
-    public void CollectExpired_PendingAckPastAckTimeout_ReportsAckReason()
+    public void CollectExpired_PendingAckPastAckTimeout_ReportsAckReason_AndRetains()
     {
         var registry = new PendingRequestRegistry();
         registry.Register(NewRequest(1));
@@ -83,6 +91,36 @@ public sealed class PendingRequestRegistryTests
 
         var only = Assert.Single(expired);
         Assert.Equal(MpTimeoutReason.Acknowledgement, only.Reason);
+
+        // ADR-0015 "hold": the faulted request is retained so a late TO can still resolve it.
+        Assert.Equal(1, registry.Count);
+    }
+
+    [Fact]
+    public void CollectExpired_FaultsAtMostOnce()
+    {
+        var registry = new PendingRequestRegistry();
+        registry.Register(NewRequest(1));
+
+        var first = registry.CollectExpired(T0.AddSeconds(3), TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(10));
+        var second = registry.CollectExpired(T0.AddSeconds(30), TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(10));
+
+        Assert.Single(first);
+        Assert.Empty(second);
+        Assert.Equal(1, registry.Count);
+    }
+
+    [Fact]
+    public void Resolve_AfterFault_StillReturnsAndRemoves()
+    {
+        var registry = new PendingRequestRegistry();
+        registry.Register(NewRequest(1));
+        registry.CollectExpired(T0.AddSeconds(3), TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(10));
+
+        var resolved = registry.Resolve(1);
+
+        Assert.NotNull(resolved);
+        Assert.Equal(MpRequestPhase.Resolved, resolved!.Phase);
         Assert.Equal(0, registry.Count);
     }
 

@@ -9,7 +9,7 @@ export interface UseConnectionResult {
   status: ListenerStatus
   error: string | null
   entries: TrafficEntry[]
-  start: (config: ListenerConfig) => void
+  start: (config: ListenerConfig, endOfTelegram: string) => void
   stop: () => void
   send: (payload: readonly number[]) => void
   clear: () => void
@@ -46,8 +46,8 @@ export function useConnection(client: ConnectionClient): UseConnectionResult {
   }, [client])
 
   const start = useCallback(
-    (config: ListenerConfig) => {
-      void client.start(config)
+    (config: ListenerConfig, endOfTelegram: string) => {
+      void client.start(config, endOfTelegram)
     },
     [client],
   )

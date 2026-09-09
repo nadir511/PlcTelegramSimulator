@@ -60,7 +60,8 @@ public sealed class TcpInboundTelegramRouter : IHostedService
                     _engine.TryAcknowledge(inbound.TelegramId);
                     break;
                 case InboundSimKind.TransportOrder:
-                    _engine.TryResolveTransportOrder(inbound.TelegramId, inbound.Destination);
+                    _engine.TryResolveTransportOrder(
+                        inbound.TelegramId, inbound.Destination, inbound.DestinationMp);
                     break;
             }
         }

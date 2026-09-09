@@ -131,6 +131,11 @@ export interface BinType {
 export interface BinSource {
   id: string
   types: BinType[]
+  /**
+   * Distance kept between consecutive bins released from this source, in metres.
+   * Drives the release cadence and the in-transit gap; defaults to 0.3 m when unset.
+   */
+  spacingMeters?: number
 }
 
 /** A named grouping of components / MP-sensors (maps to a backend zone later). */
@@ -184,6 +189,31 @@ export interface Bin {
   x: number
   /** Centre y within the stage, in canvas pixels. */
   y: number
+  /**
+   * Progress along the conveyor route, in arc-length pixels from the route start.
+   * Present while a bin rides a connected conveyor path; the renderer still uses
+   * {@link Bin.x}/{@link Bin.y} (derived from this) to draw the bin.
+   */
+  dist?: number
+  /**
+   * Correlation id of the MP report this bin sent on reaching a message point
+   * (from the `mpReported` event). Reads as a zero-padded sequence on the canvas
+   * (`#000001`), matching a telegram back to its bin (ADR-0012).
+   */
+  telegramId?: number
+  /**
+   * The next message-point id the resolved transport order routed this bin to
+   * (from the `transportOrder` event's `destinationMp`). Present once the
+   * authoritative reply arrives; on the single linear route "continue" just
+   * releases the bin toward it.
+   */
+  destinationMp?: string
+  /**
+   * True when the bin's pending MP request faulted (timed out) but the bin is
+   * still held: a fault is a non-releasing signal (ADR-0012), so a timed-out bin
+   * keeps waiting at the MP and is drawn distinctly rather than moving on.
+   */
+  timedOut?: boolean
 }
 
 /** Lifecycle of the (transient) preview simulation clock. */

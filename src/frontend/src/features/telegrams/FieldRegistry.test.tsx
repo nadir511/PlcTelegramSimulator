@@ -115,4 +115,39 @@ describe('FieldRegistry', () => {
     fireEvent.click(screen.getByRole('button', { name: /expand group 00/i }))
     expect(screen.getByLabelText('Field 00 name')).toBeInTheDocument()
   })
+
+  it('renders padding controls for editable STRING/HEX fields', () => {
+    renderRegistry()
+    expect(screen.getByLabelText('Header padding side')).toBeInTheDocument()
+    expect(screen.getByLabelText('Header padding value')).toBeInTheDocument()
+  })
+
+  it('hides padding controls for auto (computed) fields', () => {
+    renderRegistry()
+    expect(screen.queryByLabelText('Checksum padding side')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Checksum padding value')).not.toBeInTheDocument()
+  })
+
+  it('hides padding controls for numeric INT fields', () => {
+    const groups = groupsOf([{ id: 'n', name: 'Count', dataType: 'INT', length: 2, defaultValue: '1' }])
+    renderRegistry({ groups })
+    expect(screen.queryByLabelText('Count padding side')).not.toBeInTheDocument()
+  })
+
+  it('emits padding side and value updates', () => {
+    const { onUpdateField } = renderRegistry()
+    fireEvent.change(screen.getByLabelText('Header padding side'), { target: { value: 'left' } })
+    expect(onUpdateField).toHaveBeenCalledWith('a', { padSide: 'left' })
+
+    fireEvent.change(screen.getByLabelText('Header padding value'), { target: { value: '0' } })
+    expect(onUpdateField).toHaveBeenCalledWith('a', { padValue: '0' })
+  })
+
+  it('surfaces a validation error for a bad pad value', () => {
+    const groups = groupsOf([
+      { id: 'p', name: 'P', dataType: 'STRING', length: 4, defaultValue: 'A', padValue: '00' },
+    ])
+    renderRegistry({ groups })
+    expect(screen.getByLabelText('P padding value')).toHaveAttribute('aria-invalid', 'true')
+  })
 })

@@ -33,6 +33,13 @@ public sealed record TransportOrderDto
 
     /// <summary>The next destination the bin should route toward.</summary>
     public required string Destination { get; init; }
+
+    /// <summary>
+    /// The next message point id the bin should route toward, when the transport order supplies one
+    /// (ADR-0015). Optional and additive to <see cref="Destination"/>; <see langword="null"/> when the
+    /// order carries only a generic destination.
+    /// </summary>
+    public string? DestinationMp { get; init; }
 }
 
 /// <summary>

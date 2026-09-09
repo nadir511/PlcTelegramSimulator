@@ -44,22 +44,25 @@ public sealed class SimulationLoop : ISimulationEngine, IHostedService
     /// <summary>The number of MP requests currently awaiting an ACK or TO.</summary>
     public int OutstandingCount => _orchestrator.OutstandingCount;
 
-    public bool TryReportArrival(string transportUnitId, string messagePointId)
+    public bool TryReportArrival(
+        string transportUnitId, string messagePointId, int? telegramId, EncodedMpTelegram? telegram)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(transportUnitId);
         ArgumentException.ThrowIfNullOrWhiteSpace(messagePointId);
 
-        return _inbox.Writer.TryWrite(new SimulationInput.ReportArrival(transportUnitId, messagePointId));
+        return _inbox.Writer.TryWrite(
+            new SimulationInput.ReportArrival(transportUnitId, messagePointId, telegramId, telegram));
     }
 
     public bool TryAcknowledge(int telegramId) =>
         _inbox.Writer.TryWrite(new SimulationInput.AcknowledgeReceipt(telegramId));
 
-    public bool TryResolveTransportOrder(int telegramId, string destination)
+    public bool TryResolveTransportOrder(int telegramId, string destination, string? destinationMp)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(destination);
 
-        return _inbox.Writer.TryWrite(new SimulationInput.ResolveTransportOrder(telegramId, destination));
+        return _inbox.Writer.TryWrite(
+            new SimulationInput.ResolveTransportOrder(telegramId, destination, destinationMp));
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
@@ -118,13 +121,18 @@ public sealed class SimulationLoop : ISimulationEngine, IHostedService
         {
             case SimulationInput.ReportArrival arrival:
                 await _orchestrator.ReportArrivalAsync(
-                    arrival.TransportUnitId, arrival.MessagePointId, cancellationToken);
+                    arrival.TransportUnitId,
+                    arrival.MessagePointId,
+                    arrival.TelegramId,
+                    arrival.Telegram,
+                    cancellationToken);
                 break;
             case SimulationInput.AcknowledgeReceipt ack:
                 _orchestrator.Acknowledge(ack.TelegramId);
                 break;
             case SimulationInput.ResolveTransportOrder order:
-                await _orchestrator.ResolveAsync(order.TelegramId, order.Destination, cancellationToken);
+                await _orchestrator.ResolveAsync(
+                    order.TelegramId, order.Destination, order.DestinationMp, cancellationToken);
                 break;
             case SimulationInput.SweepTimeouts:
                 await _orchestrator.CheckTimeoutsAsync(cancellationToken);

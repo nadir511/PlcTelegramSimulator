@@ -14,17 +14,24 @@ public sealed class PendingRequestRegistry
     /// <summary>The number of requests currently awaiting an ACK or TO.</summary>
     public int Count => _byTelegramId.Count;
 
-    /// <summary>Registers a freshly-sent request.</summary>
-    /// <exception cref="InvalidOperationException">A request with the same TelegramId is already outstanding.</exception>
-    public void Register(PendingMpRequest request)
+    /// <summary>
+    /// Registers a freshly-sent request under its <c>TelegramId</c>. Since ADR-0009 the frontend
+    /// mints the id, and it is strictly monotonic <b>within a run</b> (a bin also blocks at its MP,
+    /// so each transport unit has at most one outstanding request). A collision can therefore only be
+    /// a <b>stale entry left over from a previous run</b>: the canvas resets its id sequence on
+    /// stop/reload, whereas this process-lifetime registry keeps held/faulted requests (ADR-0015).
+    /// Such a stale request is <b>superseded</b> — evicted and returned so the caller can observe it —
+    /// and the fresh request takes its place. This keeps the correlation authority live across
+    /// restarts instead of throwing and stranding the new arrival.
+    /// </summary>
+    /// <returns>The superseded stale request, or <see langword="null"/> when the id was free.</returns>
+    public PendingMpRequest? Register(PendingMpRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        if (!_byTelegramId.TryAdd(request.TelegramId, request))
-        {
-            throw new InvalidOperationException(
-                $"A request with TelegramId {request.TelegramId} is already outstanding.");
-        }
+        _byTelegramId.Remove(request.TelegramId, out var superseded);
+        _byTelegramId[request.TelegramId] = request;
+        return superseded;
     }
 
     /// <summary>Whether the given transport unit already has an outstanding request.</summary>
@@ -58,10 +65,14 @@ public sealed class PendingRequestRegistry
             : null;
 
     /// <summary>
-    /// Removes and returns every request whose ACK or TO deadline has passed at
-    /// <paramref name="now"/>. A <see cref="MpRequestPhase.PendingAck"/> request expires
-    /// <paramref name="ackTimeout"/> after it was sent; an <see cref="MpRequestPhase.Acknowledged"/>
-    /// request expires <paramref name="transportOrderTimeout"/> after it was acknowledged.
+    /// Reports every request whose ACK or TO deadline has passed at <paramref name="now"/> as a
+    /// <see cref="TimedOutRequest"/>, <b>retaining</b> each one (ADR-0015 "hold" exception policy). A
+    /// <see cref="MpRequestPhase.PendingAck"/> request expires <paramref name="ackTimeout"/> after it
+    /// was sent; an <see cref="MpRequestPhase.Acknowledged"/> request expires
+    /// <paramref name="transportOrderTimeout"/> after it was acknowledged. The faulted request is
+    /// marked <see cref="PendingMpRequest.Faulted"/> so it surfaces <b>at most once</b>; it stays in
+    /// the registry so a late/out-of-order transport order can still <see cref="Resolve"/> it and
+    /// release the bin, rather than being stranded as "unmatched".
     /// </summary>
     public IReadOnlyList<TimedOutRequest> CollectExpired(
         DateTimeOffset now, TimeSpan ackTimeout, TimeSpan transportOrderTimeout)
@@ -70,7 +81,8 @@ public sealed class PendingRequestRegistry
 
         foreach (var request in _byTelegramId.Values)
         {
-            if (ExpiryReason(request, now, ackTimeout, transportOrderTimeout) is { } reason)
+            if (!request.Faulted &&
+                ExpiryReason(request, now, ackTimeout, transportOrderTimeout) is { } reason)
             {
                 (expired ??= []).Add(new TimedOutRequest(request, reason));
             }
@@ -81,9 +93,10 @@ public sealed class PendingRequestRegistry
             return [];
         }
 
+        // Mark faulted but keep the request: a genuine TO arriving later still resolves the bin.
         foreach (var timedOut in expired)
         {
-            _byTelegramId.Remove(timedOut.Request.TelegramId);
+            _byTelegramId[timedOut.Request.TelegramId] = timedOut.Request with { Faulted = true };
         }
 
         return expired;
@@ -101,7 +114,7 @@ public sealed class PendingRequestRegistry
         };
 }
 
-/// <summary>A request removed by <see cref="PendingRequestRegistry.CollectExpired"/> and the reason.</summary>
-/// <param name="Request">The request that timed out.</param>
+/// <summary>A request whose deadline lapsed in <see cref="PendingRequestRegistry.CollectExpired"/> and the reason.</summary>
+/// <param name="Request">The request that timed out (retained in the registry per the ADR-0015 hold policy).</param>
 /// <param name="Reason">Whether the ACK or the TO deadline was missed.</param>
 public sealed record TimedOutRequest(PendingMpRequest Request, MpTimeoutReason Reason);

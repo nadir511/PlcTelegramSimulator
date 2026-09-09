@@ -66,6 +66,20 @@
   .chevron-anim {
     animation: move-chevrons 1s linear infinite;
   }
+
+  .save-blink {
+    animation: save-blink 1s ease-in-out infinite;
+  }
+}
+
+@keyframes save-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
 }
 
 @keyframes move-chevrons {

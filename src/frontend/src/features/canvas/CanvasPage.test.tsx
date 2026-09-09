@@ -84,6 +84,16 @@ const sensorComponent: Component = {
   },
 }
 
+const sourceComponent: Component = {
+  id: 'src-c',
+  kind: 'bin-source',
+  label: 'Source',
+  position: { x: 40, y: 200 },
+  rotation: 0,
+  geometry: { lengthMeters: 1, widthMeters: 1 },
+  ports: [{ id: 'src-c:out', role: 'out' }],
+}
+
 function inspector() {
   return within(screen.getByRole('complementary', { name: 'Property inspector' }))
 }
@@ -191,6 +201,25 @@ describe('CanvasPage export / import', () => {
     expect(parsed.layout.components[0].label).toBe('Belt')
   })
 
+  it('closes the exported layout pane', () => {
+    render(<CanvasPage seed={makeSeed({ components: [beltComponent] })} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Export layout' }))
+    expect(screen.getByLabelText('Exported layout JSON')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close exported layout' }))
+    expect(screen.queryByLabelText('Exported layout JSON')).toBeNull()
+  })
+
+  it('saves the layout and confirms it', () => {
+    render(<CanvasPage seed={makeSeed({ components: [beltComponent] })} />)
+    localStorage.clear()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save layout' }))
+
+    expect(screen.getByRole('button', { name: 'Save layout' })).toHaveTextContent('Saved')
+    expect(localStorage.getItem('plc.canvas.layout.v1')).toContain('belt')
+  })
+
   it('imports a valid layout and replaces the current one', async () => {
     render(<CanvasPage seed={makeSeed({ components: [{ ...beltComponent, id: 'seed-belt' }] })} />)
 
@@ -246,11 +275,124 @@ describe('CanvasPage simulation controls', () => {
     expect(oneX).toHaveAttribute('aria-pressed', 'false')
   })
 
-  it('spawns a preview bin', () => {
-    render(<CanvasPage seed={makeSeed({ components: [beltComponent] })} />)
-    expect(screen.queryByText('TOTE')).toBeNull()
+  it('defaults the demo response toggle ON (no backend) and flips it off', () => {
+    render(<CanvasPage seed={makeSeed()} />)
+    const toggle = screen.getByRole('checkbox', { name: /simulate responses/i })
+    // With no backend configured, the demo resolver is on by default so a
+    // frontend-only user still sees the MP→TO→next-MP cycle.
+    expect(toggle).toBeChecked()
+    expect(toggle).toBeEnabled()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Spawn Bin' }))
-    expect(screen.getByText('TOTE')).toBeInTheDocument()
+    fireEvent.click(toggle)
+    expect(toggle).not.toBeChecked()
+  })
+
+  it('disables the demo response toggle while the simulation is running', () => {
+    // Swapping the client mid-run would strand bins already held at an MP (the new
+    // client never re-reports them), so the toggle is locked until the run stops.
+    render(
+      <CanvasPage
+        seed={makeSeed({
+          binSource: { id: 'src', types: [{ typeId: 'TOTE', color: '#3b82f6', count: 2 }] },
+        })}
+      />,
+    )
+    const toggle = screen.getByRole('checkbox', { name: /simulate responses/i })
+    expect(toggle).toBeEnabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Play simulation' }))
+    expect(toggle).toBeDisabled()
+  })
+
+  it('disables Play when the bin source pool is empty', () => {
+    render(<CanvasPage seed={makeSeed({ binSource: { id: 'src', types: [] } })} />)
+    expect(screen.getByRole('button', { name: 'Play simulation' })).toBeDisabled()
+  })
+
+  it('enables Play once the bin source pool has bins', () => {
+    render(
+      <CanvasPage
+        seed={makeSeed({
+          binSource: { id: 'src', types: [{ typeId: 'TOTE', color: '#3b82f6', count: 2 }] },
+        })}
+      />,
+    )
+    expect(screen.getByRole('button', { name: 'Play simulation' })).toBeEnabled()
+  })
+
+  it('shows the total bin count on the bin source component', () => {
+    render(
+      <CanvasPage
+        seed={makeSeed({
+          components: [sourceComponent],
+          binSource: { id: 'src-c', types: [{ typeId: 'TOTE', color: '#3b82f6', count: 7 }] },
+        })}
+      />,
+    )
+    expect(screen.getByText('7')).toBeInTheDocument()
+  })
+
+  it('adds a bin type from the bin source inspector', () => {
+    // A single-component seed auto-selects that component, opening its inspector.
+    render(<CanvasPage seed={makeSeed({ components: [sourceComponent] })} />)
+    fireEvent.click(inspector().getByRole('button', { name: 'Add bin type' }))
+    // The new type's id renders as an editable text input in the Bins card.
+    expect(inspector().getByDisplayValue('BIN')).toBeInTheDocument()
+  })
+
+  it('edits the distance between bins from the bin source inspector', () => {
+    render(<CanvasPage seed={makeSeed({ components: [sourceComponent] })} />)
+    const field = inspector().getByLabelText('Distance between bins (m)') as HTMLInputElement
+    expect(field.value).toBe('0.3') // default gap
+    fireEvent.change(field, { target: { value: '1.2' } })
+    expect((inspector().getByLabelText('Distance between bins (m)') as HTMLInputElement).value).toBe('1.2')
+  })
+})
+
+describe('CanvasPage keyboard delete', () => {
+  it('deletes the selected component when Delete is pressed', () => {
+    render(<CanvasPage seed={makeSeed()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Add Straight Belt' }))
+    expect(inspector().getByLabelText('Speed (m/s)')).toBeInTheDocument()
+
+    fireEvent.keyDown(window, { key: 'Delete' })
+    expect(inspector().getByText(/select a component/i)).toBeInTheDocument()
+  })
+
+  it('also deletes the selection on Backspace', () => {
+    render(<CanvasPage seed={makeSeed()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Add Straight Belt' }))
+
+    fireEvent.keyDown(window, { key: 'Backspace' })
+    expect(inspector().getByText(/select a component/i)).toBeInTheDocument()
+  })
+
+  it('ignores Delete while typing in a form field', () => {
+    render(<CanvasPage seed={makeSeed()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Add Straight Belt' }))
+    const speed = inspector().getByLabelText('Speed (m/s)')
+
+    // The key event originates from the input, so the delete is suppressed.
+    fireEvent.keyDown(speed, { key: 'Delete' })
+    expect(inspector().getByLabelText('Speed (m/s)')).toBeInTheDocument()
+  })
+})
+
+describe('CanvasPage save state', () => {
+  it('blinks the Save button while dirty and confirms after saving', () => {
+    render(<CanvasPage seed={makeSeed()} />)
+
+    // Clean on first render.
+    expect(screen.getByRole('button', { name: 'Save layout' })).not.toHaveClass('save-blink')
+    expect(screen.getByRole('button', { name: 'Save layout' })).not.toHaveTextContent('Save layout *')
+
+    // An edit makes the layout dirty → the Save button blinks and hints unsaved work.
+    fireEvent.click(screen.getByRole('button', { name: 'Add Straight Belt' }))
+    expect(screen.getByRole('button', { name: 'Save layout' })).toHaveClass('save-blink')
+    expect(screen.getByRole('button', { name: 'Save layout' })).toHaveTextContent('Save layout *')
+
+    // Saving clears the dirty state and shows the transient confirmation.
+    fireEvent.click(screen.getByRole('button', { name: 'Save layout' }))
+    expect(screen.getByRole('button', { name: 'Save layout' })).toHaveTextContent('Saved')
+    expect(screen.getByRole('button', { name: 'Save layout' })).not.toHaveClass('save-blink')
   })
 })

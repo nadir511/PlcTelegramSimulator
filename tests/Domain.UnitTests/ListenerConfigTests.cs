@@ -14,6 +14,34 @@ public sealed class ListenerConfigTests
         Assert.Equal(2001, config.ReceivePort);
         Assert.Equal(TimeSpan.FromMilliseconds(50), config.ProcessingDelay);
         Assert.True(config.AutoAcceptReconnections);
+
+        // End-of-Telegram defaults to '~' (0x7E, eHub's terminator) to mirror the frontend default.
+        Assert.Equal("~", config.EndOfTelegram);
+        Assert.Equal(new byte[] { 0x7E }, config.Terminator);
+    }
+
+    [Theory]
+    [InlineData("~", new byte[] { 0x7E })]
+    [InlineData("#!", new byte[] { 0x23, 0x21 })]
+    public void Create_WithExplicitEndOfTelegram_EncodesTerminatorBytes(string endOfTelegram, byte[] expected)
+    {
+        var config = ListenerConfig.Create(
+            "127.0.0.1", sendPort: 2000, receivePort: 2001, processingDelayMs: 0, autoAcceptReconnections: false, endOfTelegram);
+
+        Assert.Equal(endOfTelegram, config.EndOfTelegram);
+        Assert.Equal(expected, config.Terminator);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("123456789")] // 9 chars, exceeds MaxEndOfTelegramLength
+    [InlineData("€")] // multi-byte, not Latin-1
+    public void Create_WithInvalidEndOfTelegram_ThrowsWithEndOfTelegramKey(string endOfTelegram)
+    {
+        var ex = Assert.Throws<DomainValidationException>(() =>
+            ListenerConfig.Create("127.0.0.1", sendPort: 2000, receivePort: 2001, processingDelayMs: 0, autoAcceptReconnections: false, endOfTelegram));
+
+        Assert.Contains("endOfTelegram", ex.Errors.Keys);
     }
 
     [Theory]

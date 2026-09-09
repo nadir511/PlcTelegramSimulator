@@ -73,3 +73,63 @@ profile can adopt it unchanged.
   API** and **XML import** (currently a disabled affordance); add **CRC computation** and more data
   types as needed; length-prefixed framing ([ADR-0007](0007-connection-api-and-transport-model.md))
   will consume these templates to encode real binary telegrams.
+
+## Amendments
+
+This ADR is the foundation of the telegram model. Later decisions **extend** it — they refine the
+model without reversing it, so this ADR stays `Accepted` (they do **not** supersede it):
+
+- [ADR-0010 — Telegram field groups](0010-telegram-field-groups.md): a type's fields are organised
+  into named, editable **groups** (`TelegramType.groups[]` replaces the flat `fields[]`). Grouping is
+  organisational only — byte offsets and total length are still derived from the fields flattened in
+  group-then-field order, so the encoding above is unchanged.
+- [ADR-0014 — Configurable field padding](0014-configurable-field-padding.md): each `STRING`/`HEX`
+  field gains optional **`padSide`** (`left`/`right`) and **`padValue`** (any single Latin-1 char).
+  The defaults — right side, `0x00` fill — reproduce this ADR's zero-pad convention byte-for-byte, so
+  existing types round-trip unchanged.
+- **MP arrival wire encoding — frontend encodes the complete telegram, backend relays it verbatim**
+  (consolidated here from the retired ADR-0016 → ADR-0017 pair, 2026-08-17). When a bin reaches a
+  message point, the telegram put on the wire is the **complete telegram the sensor's type defines** —
+  every field encoded per its data type and padding (this ADR + ADR-0014), terminated by the
+  End-of-Telegram sequence ([ADR-0011](0011-eof-terminated-telegram-framing.md)) — not the interim
+  `MP|{id}|{tu}|{mp}|N` placeholder that
+  [ADR-0012](0012-mp-to-orchestration-and-simulation-authority.md) deferred. Because the templates
+  live only in the frontend (localStorage; the backend is stateless,
+  [ADR-0005](0005-backend-architecture-and-patterns.md)) and the tested `format.ts` is the single
+  encoder, the **frontend encodes the whole telegram — including the `TelegramId` correlation
+  field — and the backend relays the bytes verbatim.** The arrival carries the id **as a scalar**
+  beside the bytes (never field-layout metadata):
+
+  ```jsonc
+  // POST /api/simulation/arrivals
+  {
+    "transportUnitId": "0A3F1C",
+    "messagePointId": "MP1",
+    "telegramId": 42,                              // minted + encoded into the telegram by the frontend
+    "telegram": [67, 86, 0, 42, 78, 32, /* … */ 35] // finished value bytes (0..255); empty fields already padded
+  }
+  ```
+
+  The backend registers the pending request under `telegramId`, sends the bytes through the gateway
+  (ADR-0011 `~` framing), and matches the echoed id in the inbound transport order
+  ([ADR-0012](0012-mp-to-orchestration-and-simulation-authority.md)/[ADR-0015](0015-mp-to-timeout-hold-and-enriched-transport-order.md)).
+  It remains the correlation **authority** (pending registry, timeout/hold policy, TO matching) — it
+  simply no longer *allocates* the id. **Fallbacks:** when the telegram can't be finalised
+  frontend-side (an `auto`/checksum field or an unresolvable byte) the arrival carries `telegramId`
+  only and the backend uses its interim `EncodeMp` with that id; an arrival with **neither** field is
+  still accepted (the backend allocates an id). A `telegram` sent **without** a `telegramId` is
+  rejected (`400`) — a verbatim frame can only be correlated by its encoded id. Because the frontend
+  mints the id and resets its sequence per run while the backend registry holds faulted requests
+  across runs (ADR-0015), a reused id **supersedes** the stale same-id entry (evicts + logs it) rather
+  than being rejected, so a restart/reload can't strand a fresh arrival. Inbound ACK/TO **decoding**
+  stays the interim ASCII format (template-driven inbound decoding, and server-side `auto`/CRC
+  computation, remain future work).
+
+  *Why it evolved:* an intermediate step (the former ADR-0016) instead had the frontend leave the
+  `TelegramId` slot empty and ship a small field-layout descriptor (`offset`/`length`/`dataType`/
+  `padSide`/`padValue`) so the **backend** could stamp the id it allocated. The requirement then
+  clarified that an arrival must carry telegram **values only — no layout metadata**, which that
+  descriptor violated; moving id *allocation* to the frontend and making the backend a pure relay is
+  the smallest change that satisfies it. This reverses ADR-0012's backend-owned-id allocation (but not
+  its correlation authority). Multiple concurrent canvases against one backend could still mint
+  overlapping *live* ids — out of scope for the single-canvas simulator.

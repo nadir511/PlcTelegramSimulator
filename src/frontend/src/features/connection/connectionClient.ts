@@ -18,7 +18,12 @@ export type ConnectionEvent =
  */
 export interface ConnectionClient {
   getSnapshot(): ConnectionSnapshot
-  start(config: ListenerConfig): Promise<void>
+  /**
+   * Start the listener. `endOfTelegram` is the registry-wide End-of-Telegram
+   * terminator (e.g. `#`); the backend appends it to every outbound telegram and
+   * splits inbound frames on it, so callers never append it to payloads themselves.
+   */
+  start(config: ListenerConfig, endOfTelegram: string): Promise<void>
   stop(): Promise<void>
   /** Send a manual telegram to the connected client. */
   send(payload: readonly number[]): Promise<void>

@@ -46,7 +46,8 @@ public sealed class ConnectionController : ControllerBase
                 request.SendPort,
                 request.ReceivePort,
                 request.ProcessingDelayMs,
-                request.AutoAcceptReconnections);
+                request.AutoAcceptReconnections,
+                request.EndOfTelegram);
         }
         catch (DomainValidationException ex)
         {

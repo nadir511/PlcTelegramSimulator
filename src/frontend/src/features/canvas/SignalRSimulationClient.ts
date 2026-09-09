@@ -1,5 +1,6 @@
 import * as signalR from '@microsoft/signalr'
 import type {
+  ArrivalTelegram,
   MpReportedEvent,
   SimulationClient,
   SimulationEvent,
@@ -17,6 +18,8 @@ interface MpReportedDto {
 /** `transportOrder` hub payload (mirror of the backend `TransportOrderDto`). */
 interface TransportOrderDto extends MpReportedDto {
   destination: string
+  /** Id of the next message point the bin is routed to (backend transport graph). */
+  destinationMp?: string
 }
 
 /** `fault` hub payload (mirror of the backend `SimulationFaultDto`); `reason` is `ack|to`. */
@@ -32,9 +35,12 @@ interface SimulationFaultDto extends MpReportedDto {
  * the in-browser {@link MockSimulationClient} is used.
  *
  * Mirrors {@link SignalRConnectionClient}: the hub opens lazily on the first
- * subscribe, and transport failures never throw at the render layer — a failed
- * `reportArrival` is a best-effort no-op (the pending bin later releases via the
- * hub's `fault` timeout).
+ * subscribe, and transport failures never throw at the render layer. A failed or
+ * unreachable `reportArrival` is a best-effort no-op: it does **not** fabricate a
+ * release, so a bin blocked at a message point keeps waiting until the backend
+ * pushes the authoritative `transportOrder` (or a real `fault` timeout) over the
+ * hub — the MP/TO decision is backend-authoritative (ADR-0012). With no backend
+ * the bin therefore holds at the MP rather than moving on.
  */
 export class SignalRSimulationClient implements SimulationClient {
   private readonly baseUrl: string
@@ -70,26 +76,39 @@ export class SignalRSimulationClient implements SimulationClient {
     }
   }
 
-  async reportArrival(transportUnitId: string, messagePointId: string): Promise<void> {
+  async reportArrival(
+    transportUnitId: string,
+    messagePointId: string,
+    telegram?: ArrivalTelegram,
+  ): Promise<void> {
     await this.ensureHub()
     try {
-      const response = await fetch(`${this.baseUrl}/api/simulation/arrivals`, {
+      // Best-effort: a rejected or unreachable backend must NOT release the bin.
+      // The authoritative release only ever arrives over the hub (transportOrder /
+      // fault), so a blocked bin keeps waiting until the backend replies.
+      //
+      // ADR-0009: the frontend-minted correlation id (`telegramId`) and the finished
+      // telegram bytes (`telegram`) ride along when present — the backend relays the
+      // bytes verbatim (the id is already encoded in) and correlates on `telegramId`.
+      // Without a `payload` the backend uses its interim MP codec, still keyed by the
+      // supplied id.
+      const body: {
+        transportUnitId: string
+        messagePointId: string
+        telegramId?: number
+        telegram?: number[]
+      } = { transportUnitId, messagePointId }
+      if (telegram) {
+        body.telegramId = telegram.telegramId
+        if (telegram.payload) body.telegram = telegram.payload
+      }
+      await fetch(`${this.baseUrl}/api/simulation/arrivals`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ transportUnitId, messagePointId }),
+        body: JSON.stringify(body),
       })
-      if (!response.ok) {
-        // Surface as a fault so the blocked bin doesn't hang forever on a reject.
-        this.emit({
-          type: 'fault',
-          fault: { telegramId: 0, transportUnitId, messagePointId, reason: 'ack' },
-        })
-      }
     } catch {
-      this.emit({
-        type: 'fault',
-        fault: { telegramId: 0, transportUnitId, messagePointId, reason: 'ack' },
-      })
+      // Swallow transport errors: the bin stays awaiting the backend's TO.
     }
   }
 
@@ -123,7 +142,7 @@ export class SignalRSimulationClient implements SimulationClient {
   }
 
   private toOrder(dto: TransportOrderDto): TransportOrderEvent {
-    return { ...this.toReported(dto), destination: dto.destination }
+    return { ...this.toReported(dto), destination: dto.destination, destinationMp: dto.destinationMp }
   }
 
   private toFault(dto: SimulationFaultDto): SimulationFaultEvent {

@@ -12,13 +12,26 @@ public abstract record SimulationInput
     }
 
     /// <summary>A bin reached a message point and must be reported to the outer TCP client.</summary>
-    public sealed record ReportArrival(string TransportUnitId, string MessagePointId) : SimulationInput;
+    /// <param name="TransportUnitId">The bin's transport-unit id.</param>
+    /// <param name="MessagePointId">The message point the bin reached.</param>
+    /// <param name="TelegramId">
+    /// The frontend-minted correlation id encoded into <paramref name="Telegram"/> (ADR-0009), or
+    /// <see langword="null"/> to let the backend allocate one (interim path).
+    /// </param>
+    /// <param name="Telegram">
+    /// The finished frontend-encoded telegram to relay verbatim (ADR-0009), or <see langword="null"/>
+    /// to fall back to the interim MP string codec.
+    /// </param>
+    public sealed record ReportArrival(
+        string TransportUnitId, string MessagePointId, int? TelegramId, EncodedMpTelegram? Telegram)
+        : SimulationInput;
 
     /// <summary>A transport acknowledgement (Status A) arrived for a pending request.</summary>
     public sealed record AcknowledgeReceipt(int TelegramId) : SimulationInput;
 
     /// <summary>A transport order (next destination) arrived for a pending request.</summary>
-    public sealed record ResolveTransportOrder(int TelegramId, string Destination) : SimulationInput;
+    public sealed record ResolveTransportOrder(int TelegramId, string Destination, string? DestinationMp)
+        : SimulationInput;
 
     /// <summary>Periodic tick that sweeps expired ACK/TO deadlines on the loop thread.</summary>
     public sealed record SweepTimeouts : SimulationInput;

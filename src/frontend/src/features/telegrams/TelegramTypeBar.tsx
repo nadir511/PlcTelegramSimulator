@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { AddTelegramTypeForm } from './AddTelegramTypeForm'
-import { rawStream } from './format'
+import { allFields, rawStream, totalLength } from './format'
 import type { TelegramType } from './types'
 import type { AddTypeInput, AddTypeResult } from './useTelegramTypes'
 import { Icon } from '@/components/ui/Icon'
@@ -11,7 +11,7 @@ interface TelegramTypeBarProps {
   onSelect: (code: string) => void
   onAddType: (input: AddTypeInput) => AddTypeResult
   onRemoveType: (code: string) => void
-  /** Registry-wide End-of-Telegram terminator appended to every telegram (empty = none). */
+  /** Registry-wide End-of-Telegram terminator appended to every telegram (empty = use default). */
   endOfTelegram: string
   onEndOfTelegramChange: (value: string) => void
 }
@@ -52,7 +52,7 @@ export function TelegramTypeBar({
           <div className="flex items-center gap-2">
             <label
               htmlFor="end-of-telegram"
-              title="Special character appended to every telegram's byte form (e.g. # or !). Leave empty for none."
+              title="Special character appended to every telegram's byte form (e.g. ~ or #). Leave empty to use the default (~)."
               className="flex items-center gap-1.5 font-label-xs text-label-xs uppercase text-on-surface-variant"
             >
               EOT
@@ -64,7 +64,7 @@ export function TelegramTypeBar({
               maxLength={4}
               spellCheck={false}
               autoComplete="off"
-              placeholder="#"
+              placeholder="~"
               aria-label="End of Telegram character"
               onChange={(event) => onEndOfTelegramChange(event.target.value)}
               className="w-14 rounded border border-outline-variant bg-background px-2 py-1 text-center font-data-mono text-data-mono text-on-surface focus:border-secondary focus:outline-none focus:ring-1 focus:ring-secondary"
@@ -98,6 +98,7 @@ export function TelegramTypeBar({
         ) : (
           types.map((type) => {
             const selected = type.code === selectedCode
+            const bytes = totalLength(allFields(type.groups))
             return (
               <div
                 key={type.code}
@@ -119,6 +120,13 @@ export function TelegramTypeBar({
                   <span className="font-headline-md text-headline-md leading-none">{type.code}</span>
                   <span className="font-label-xs text-label-xs text-on-surface-variant">{type.name}</span>
                 </button>
+                <span
+                  aria-label={`${type.code} total field length: ${bytes} ${bytes === 1 ? 'byte' : 'bytes'}`}
+                  title="Total field length — sum of every field's byte length (excludes the End-of-Telegram terminator)"
+                  className="rounded bg-surface-container px-1.5 py-0.5 font-data-mono text-label-xs text-on-surface-variant tabular-nums"
+                >
+                  {bytes} B
+                </span>
                 <button
                   type="button"
                   aria-label={`Delete ${type.code} telegram type`}

@@ -1,5 +1,12 @@
-/** Top application bar: product identity only. */
-export function TopBar() {
+import type { ReactNode } from 'react'
+
+interface TopBarProps {
+  /** Optional actions rendered on the right of the bar (e.g. config Export/Import). */
+  actions?: ReactNode
+}
+
+/** Top application bar: product identity plus optional right-aligned actions. */
+export function TopBar({ actions }: TopBarProps) {
   return (
     <header className="w-full flex justify-between items-center px-gutter h-14 bg-surface-container-low border-b border-outline-variant z-10 shrink-0">
       <div className="flex items-center gap-3">
@@ -10,6 +17,7 @@ export function TopBar() {
           SIM-PLC v2.4
         </span>
       </div>
+      {actions ? <div className="flex items-center gap-2">{actions}</div> : null}
     </header>
   )
 }

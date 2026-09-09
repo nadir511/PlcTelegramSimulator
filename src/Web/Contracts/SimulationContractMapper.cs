@@ -26,6 +26,7 @@ public static class SimulationContractMapper
             TransportUnitId = order.TransportUnitId,
             MessagePointId = order.MessagePointId,
             Destination = order.Destination,
+            DestinationMp = order.DestinationMp,
         };
 
     /// <summary>Maps a timed-out request and its reason to a <c>fault</c> DTO.</summary>

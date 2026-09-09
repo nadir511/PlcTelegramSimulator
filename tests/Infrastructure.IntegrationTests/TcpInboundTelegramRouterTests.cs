@@ -36,9 +36,25 @@ public sealed class TcpInboundTelegramRouterTests
 
         transport.RaiseTelegram(Encoding.ASCII.GetBytes("TO|5|DEST-Z"));
 
-        var (telegramId, destination) = Assert.Single(engine.Resolved);
+        var (telegramId, destination, destinationMp) = Assert.Single(engine.Resolved);
         Assert.Equal(5, telegramId);
         Assert.Equal("DEST-Z", destination);
+        Assert.Null(destinationMp);
+        Assert.Empty(engine.Acknowledged);
+    }
+
+    [Fact]
+    public async Task FourPartTransportOrder_FeedsEngineResolve_WithNextMp()
+    {
+        var router = Build(out var transport, out var engine);
+        await router.StartAsync(CancellationToken.None);
+
+        transport.RaiseTelegram(Encoding.ASCII.GetBytes("TO|7|SORTER_3|MP-12"));
+
+        var (telegramId, destination, destinationMp) = Assert.Single(engine.Resolved);
+        Assert.Equal(7, telegramId);
+        Assert.Equal("SORTER_3", destination);
+        Assert.Equal("MP-12", destinationMp);
         Assert.Empty(engine.Acknowledged);
     }
 

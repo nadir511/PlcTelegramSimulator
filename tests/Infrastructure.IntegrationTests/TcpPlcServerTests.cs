@@ -12,6 +12,10 @@ public sealed class TcpPlcServerTests
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(5);
 
+    // Wire terminator for the eHub cases; the server derives its own from the config's
+    // End-of-Telegram, so tests asserting exact bytes set endOfTelegram: "~" to match.
+    private static readonly byte[] Eof = { 0x7E };
+
     [Fact]
     public async Task ReceivePort_InboundTelegram_ObservedAndAcknowledged()
     {
@@ -21,7 +25,7 @@ public sealed class TcpPlcServerTests
         await using var server = new TcpPlcServer(framer, NullLogger<TcpPlcServer>.Instance);
         recorder.Attach(server);
 
-        var config = ListenerConfig.Create("127.0.0.1", txPort, rxPort, processingDelayMs: 50, autoAcceptReconnections: true);
+        var config = ListenerConfig.Create("127.0.0.1", txPort, rxPort, processingDelayMs: 50, autoAcceptReconnections: true, endOfTelegram: "~");
         await server.StartAsync(config, CancellationToken.None);
 
         try
@@ -35,7 +39,7 @@ public sealed class TcpPlcServerTests
             await recorder.WaitForStatusAsync(ListenerStatus.Connected, Timeout);
 
             var payload = new byte[] { 0x4d, 0x50, 0x30, 0x31 };
-            await stream.WriteAsync(framer.Encode(payload));
+            await stream.WriteAsync(framer.Encode(payload, Eof));
 
             // Inbound telegram is observed with the exact payload.
             await recorder.WaitForTrafficAsync(
@@ -68,7 +72,7 @@ public sealed class TcpPlcServerTests
         await using var server = new TcpPlcServer(framer, NullLogger<TcpPlcServer>.Instance);
         recorder.Attach(server);
 
-        var config = ListenerConfig.Create("127.0.0.1", txPort, rxPort, processingDelayMs: 10, autoAcceptReconnections: true);
+        var config = ListenerConfig.Create("127.0.0.1", txPort, rxPort, processingDelayMs: 10, autoAcceptReconnections: true, endOfTelegram: "~");
         await server.StartAsync(config, CancellationToken.None);
 
         try
@@ -86,7 +90,7 @@ public sealed class TcpPlcServerTests
 
             // The client receives the framed telegram.
             var frame = await ReadExactAsync(stream, payload.Length + 1, Timeout);
-            Assert.Equal(framer.Encode(payload), frame);
+            Assert.Equal(framer.Encode(payload, Eof), frame);
 
             // A manual outbound entry is observed.
             await recorder.WaitForTrafficAsync(
@@ -104,14 +108,15 @@ public sealed class TcpPlcServerTests
     [Fact]
     public async Task SendPort_EhubStyleTelegram_HasNoStxAndEofTerminatorOnTheWire()
     {
-        // Live socket hex capture for the eHub ATI wire format (ADR-0011): the frame must
-        // start directly with the source name (no 0x02 STX) and end with a single '~' (0x7E).
+        // Live socket hex capture for the eHub ATI wire format (ADR-0018): with End-of-Telegram
+        // set to '~', the frame must start directly with the source name (no 0x02 STX) and end
+        // with a single '~' (0x7E).
         var (rxPort, txPort) = FreePortPair();
         var recorder = new EventRecorder();
         await using var server = new TcpPlcServer(new EofTelegramFramer(), NullLogger<TcpPlcServer>.Instance);
         recorder.Attach(server);
 
-        var config = ListenerConfig.Create("127.0.0.1", txPort, rxPort, processingDelayMs: 10, autoAcceptReconnections: true);
+        var config = ListenerConfig.Create("127.0.0.1", txPort, rxPort, processingDelayMs: 10, autoAcceptReconnections: true, endOfTelegram: "~");
         await server.StartAsync(config, CancellationToken.None);
 
         try
@@ -142,6 +147,43 @@ public sealed class TcpPlcServerTests
             Assert.DoesNotContain((byte)0x02, frame); // no STX anywhere
             Assert.Equal(0x7E, frame[^1]);            // trailing '~' EOF
             Assert.Equal(new byte[] { 0x4D, 0x50 }, frame[12..14]); // telegram type 'MP' at offset 12–13
+        }
+        finally
+        {
+            await server.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task SendPort_ManualTelegram_UsesConfiguredEndOfTelegram()
+    {
+        // The terminator is UI-driven: with End-of-Telegram '#', the wire frame ends with 0x23,
+        // proving nothing is hardcoded to '~'.
+        var (rxPort, txPort) = FreePortPair();
+        var recorder = new EventRecorder();
+        await using var server = new TcpPlcServer(new EofTelegramFramer(), NullLogger<TcpPlcServer>.Instance);
+        recorder.Attach(server);
+
+        var config = ListenerConfig.Create("127.0.0.1", txPort, rxPort, processingDelayMs: 10, autoAcceptReconnections: true, endOfTelegram: "#");
+        await server.StartAsync(config, CancellationToken.None);
+
+        try
+        {
+            await recorder.WaitForStatusAsync(ListenerStatus.Listening, Timeout);
+
+            using var client = new TcpClient();
+            await client.ConnectAsync(IPAddress.Loopback, txPort);
+            var stream = client.GetStream();
+
+            await recorder.WaitForStatusAsync(ListenerStatus.Connected, Timeout);
+
+            var payload = new byte[] { 0x4d, 0x50, 0x30, 0x31 };
+            await server.SendAsync(payload, CancellationToken.None);
+
+            var frame = await ReadExactAsync(stream, payload.Length + 1, Timeout);
+
+            Assert.Equal(0x23, frame[^1]);            // trailing '#'
+            Assert.Equal(new byte[] { 0x4d, 0x50, 0x30, 0x31, 0x23 }, frame);
         }
         finally
         {

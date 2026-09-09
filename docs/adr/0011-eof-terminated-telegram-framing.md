@@ -1,8 +1,13 @@
 # 11. EOF-terminated telegram framing (`~`)
 
-- **Status:** Accepted
+- **Status:** Superseded by [ADR-0018](0018-ui-driven-end-of-telegram-terminator.md)
 - **Date:** 2026-08-12
 - **Deciders:** PlcTelegramSimulator team
+
+> **Superseded by [ADR-0018](0018-ui-driven-end-of-telegram-terminator.md).** This ADR chose a
+> single hardcoded `~` (`0x7E`) frame terminator. ADR-0018 keeps EOF framing but makes the
+> terminator **configurable**, sourced from the UI End-of-Telegram field (default `~`), so no
+> terminator byte is baked into the framer. The context below is retained for historical record.
 
 ## Context and problem statement
 

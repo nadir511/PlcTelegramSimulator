@@ -75,3 +75,9 @@ app.MapHub<ConnectionHub>("/hubs/connection");
 app.MapHub<SimulationHub>("/hubs/simulation");
 
 app.Run();
+
+/// <summary>
+/// Exposed so <c>WebApplicationFactory&lt;Program&gt;</c> can boot the app in-memory for
+/// integration tests. Top-level statements otherwise generate an internal entry point.
+/// </summary>
+public partial class Program;

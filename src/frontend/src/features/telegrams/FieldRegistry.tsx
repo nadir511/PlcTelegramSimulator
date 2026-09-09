@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { DATA_TYPES } from './defaults'
-import { allFields, validateField, withOffsets } from './format'
-import type { DataType, TelegramField, TelegramFieldGroup } from './types'
+import { allFields, fieldSupportsPadding, validateField, withOffsets } from './format'
+import type { DataType, PadSide, TelegramField, TelegramFieldGroup } from './types'
 import { Icon } from '@/components/ui/Icon'
 
 interface FieldRegistryProps {
@@ -18,7 +18,16 @@ const CELL_INPUT =
   'w-full rounded bg-background border border-outline-variant px-2 py-1 font-data-mono text-data-mono text-on-surface ' +
   'focus:border-secondary focus:outline-none focus:ring-1 focus:ring-secondary aria-[invalid=true]:border-error'
 
-const HEADERS = ['Idx', 'Field Name', 'Data Type', 'Offset', 'Length', 'Default Value', ''] as const
+const HEADERS = [
+  'Idx',
+  'Field Name',
+  'Data Type',
+  'Offset',
+  'Length',
+  'Default Value',
+  'Padding',
+  '',
+] as const
 
 /** Editable table defining the grouped, ordered field structure of a telegram type. */
 export function FieldRegistry({
@@ -259,6 +268,56 @@ export function FieldRegistry({
                                   </p>
                                 ) : null}
                               </>
+                            )}
+                          </td>
+
+                          <td className="px-3 py-2">
+                            {fieldSupportsPadding(field) ? (
+                              <div className="flex items-start gap-2">
+                                <select
+                                  aria-label={`${rowLabel} padding side`}
+                                  value={field.padSide ?? 'right'}
+                                  onChange={(event) =>
+                                    onUpdateField(field.id, {
+                                      padSide: event.target.value as PadSide,
+                                    })
+                                  }
+                                  className={`${CELL_INPUT} w-24`}
+                                >
+                                  <option value="right">Right</option>
+                                  <option value="left">Left</option>
+                                </select>
+                                <div>
+                                  <input
+                                    type="text"
+                                    aria-label={`${rowLabel} padding value`}
+                                    value={field.padValue ?? ''}
+                                    spellCheck={false}
+                                    autoComplete="off"
+                                    placeholder="NUL"
+                                    aria-invalid={Boolean(errors.padValue)}
+                                    onChange={(event) =>
+                                      onUpdateField(field.id, { padValue: event.target.value })
+                                    }
+                                    className={`${CELL_INPUT} w-16 text-center`}
+                                  />
+                                  {errors.padValue ? (
+                                    <p
+                                      role="alert"
+                                      className="mt-1 font-label-xs text-label-xs text-error"
+                                    >
+                                      {errors.padValue}
+                                    </p>
+                                  ) : null}
+                                </div>
+                              </div>
+                            ) : (
+                              <span
+                                aria-hidden="true"
+                                className="text-on-surface-variant/50 tabular-nums"
+                              >
+                                —
+                              </span>
                             )}
                           </td>
 

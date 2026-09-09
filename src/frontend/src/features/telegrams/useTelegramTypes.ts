@@ -1,6 +1,7 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DEFAULT_END_OF_TELEGRAM, SEED_TELEGRAM_TYPES, defaultGroups } from './defaults'
 import { allFields, validateNewType } from './format'
+import { loadStoredTelegrams, persistTelegrams } from './persistence'
 import type { TelegramField, TelegramFieldGroup, TelegramType } from './types'
 
 let fieldSequence = 0
@@ -93,19 +94,52 @@ export interface UseTelegramTypesResult {
 }
 
 /**
- * Owns the in-browser telegram registry and the editable draft for the selected
- * type. Structural edits mutate the draft only; {@link save} commits them into
- * the registry (there is no backend template store yet — see ADR-0009).
+ * The registry state the hook boots from: an injected seed (tests), else the
+ * saved registry from storage, else the built-in seeds.
  */
-export function useTelegramTypes(
-  seed: readonly TelegramType[] = SEED_TELEGRAM_TYPES,
-): UseTelegramTypesResult {
-  const [types, setTypes] = useState<TelegramType[]>(() => seed.map(cloneType))
-  const [selectedCode, setSelectedCode] = useState<string>(() => seed[0]?.code ?? '')
+interface InitialTelegramState {
+  types: readonly TelegramType[]
+  endOfTelegram: string
+}
+
+/**
+ * Resolves the initial registry: an explicit `seed` wins (used by tests); with
+ * no seed, a previously saved registry is loaded from storage (ADR-0008); a
+ * stored-but-empty registry is honoured, and only absence/corruption falls back
+ * to the built-in {@link SEED_TELEGRAM_TYPES}.
+ */
+function loadInitial(seed?: readonly TelegramType[]): InitialTelegramState {
+  if (seed) return { types: seed, endOfTelegram: DEFAULT_END_OF_TELEGRAM }
+  const stored = loadStoredTelegrams()
+  if (stored) return stored
+  return { types: SEED_TELEGRAM_TYPES, endOfTelegram: DEFAULT_END_OF_TELEGRAM }
+}
+
+/**
+ * Owns the telegram registry and the editable draft for the selected type.
+ * Structural edits mutate the draft only; {@link UseTelegramTypesResult.save}
+ * commits them into the registry. The committed registry (types + terminator) is
+ * persisted to the browser so Save Structure, Add Type, and delete survive a
+ * reload — shaped as the ADR-0008 `telegramTemplates` section (see ADR-0009).
+ */
+export function useTelegramTypes(seed?: readonly TelegramType[]): UseTelegramTypesResult {
+  const initialRef = useRef<InitialTelegramState | null>(null)
+  if (initialRef.current === null) initialRef.current = loadInitial(seed)
+  const initial = initialRef.current
+
+  const [types, setTypes] = useState<TelegramType[]>(() => initial.types.map(cloneType))
+  const [selectedCode, setSelectedCode] = useState<string>(() => initial.types[0]?.code ?? '')
   const [draft, setDraft] = useState<TelegramType | null>(() =>
-    seed[0] ? cloneType(seed[0]) : null,
+    initial.types[0] ? cloneType(initial.types[0]) : null,
   )
-  const [endOfTelegram, setEndOfTelegram] = useState<string>(DEFAULT_END_OF_TELEGRAM)
+  const [endOfTelegram, setEndOfTelegram] = useState<string>(() => initial.endOfTelegram)
+
+  // Persist the committed registry (types + terminator) whenever it changes, so
+  // Save Structure / Add Type / delete are durable across reloads. The draft is
+  // deliberately excluded — only committed structure is saved (ADR-0008/0009).
+  useEffect(() => {
+    persistTelegrams(types, endOfTelegram)
+  }, [types, endOfTelegram])
 
   const savedSelected = useMemo(
     () => types.find((type) => type.code === selectedCode) ?? null,

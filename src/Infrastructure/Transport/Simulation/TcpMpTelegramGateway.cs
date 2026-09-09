@@ -13,13 +13,22 @@ namespace PlcTelegramSimulator.Infrastructure.Transport.Simulation;
 public sealed class TcpMpTelegramGateway : IMpTelegramGateway
 {
     private readonly IPlcTransport _transport;
+    private readonly SimulationCodecOptions _options;
 
-    public TcpMpTelegramGateway(IPlcTransport transport) => _transport = transport;
+    public TcpMpTelegramGateway(IPlcTransport transport, SimulationCodecOptions options)
+    {
+        _transport = transport;
+        _options = options;
+    }
 
     public Task SendAsync(MpTelegram telegram, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(telegram);
 
-        return _transport.SendAsync(SimulationTelegramCodec.EncodeMp(telegram), cancellationToken);
+        var bytes = telegram.Encoded is { } encoded
+            ? SimulationTelegramCodec.EncodeMpPayload(encoded)
+            : SimulationTelegramCodec.EncodeMp(telegram, _options.TelegramIdWidth);
+
+        return _transport.SendAsync(bytes, cancellationToken);
     }
 }

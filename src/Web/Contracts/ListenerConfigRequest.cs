@@ -21,4 +21,11 @@ public sealed record ListenerConfigRequest
 
     /// <summary>Keep the listener open and accept a new client after one disconnects.</summary>
     public bool AutoAcceptReconnections { get; init; }
+
+    /// <summary>
+    /// End-of-Telegram terminator (from the telegram type registry) the transport appends to
+    /// every outbound telegram and splits inbound frames on. Defaults to <c>~</c> (eHub's
+    /// terminator) to mirror the frontend default; the client sends the registry value on connect.
+    /// </summary>
+    public string EndOfTelegram { get; init; } = "~";
 }

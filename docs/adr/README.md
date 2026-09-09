@@ -50,6 +50,14 @@ ADR that supersedes the old one, and mark the old one `Superseded by ADR-NNNN`.
 | [0008](0008-configuration-profile.md) | Configuration profile: a single versioned JSON import/export file | Accepted |
 | [0009](0009-telegram-template-model.md) | Telegram template model: per-type field structures | Accepted |
 | [0010](0010-telegram-field-groups.md) | Telegram field groups: named, editable field groups per type | Accepted |
-| [0011](0011-eof-terminated-telegram-framing.md) | EOF-terminated telegram framing (`~`) | Accepted |
+| [0011](0011-eof-terminated-telegram-framing.md) | EOF-terminated telegram framing (`~`) | Superseded by [ADR-0018](0018-ui-driven-end-of-telegram-terminator.md) |
 | [0012](0012-mp-to-orchestration-and-simulation-authority.md) | Message-point (MP/TO) orchestration and backend-authoritative simulation | Accepted |
 | [0013](0013-canvas-rendering-and-layout-model.md) | Conveyor canvas: React-Konva rendering and a versioned JSON layout model | Accepted |
+| [0014](0014-configurable-field-padding.md) | Configurable telegram field padding (pad side + pad character) | Accepted |
+| [0015](0015-mp-to-timeout-hold-and-enriched-transport-order.md) | MP/TO timeout policy (hold) and enriched transport-order contract | Accepted |
+| [0018](0018-ui-driven-end-of-telegram-terminator.md) | UI-driven End-of-Telegram terminator (configurable, default `~`) | Accepted |
+
+> **Consolidated:** the former ADR-0016 (template-driven MP telegram encoding) and ADR-0017
+> (frontend-encoded telegram id, verbatim relay) were folded into
+> [ADR-0009](0009-telegram-template-model.md) — see its *Amendments* section — and retired, so those
+> two numbers are intentionally unused.

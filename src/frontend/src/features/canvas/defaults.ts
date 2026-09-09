@@ -40,22 +40,17 @@ function tile(kind: ComponentKind): PaletteItem {
   return { kind, label: KIND_LABELS[kind], icon: KIND_ICONS[kind] }
 }
 
-/** The palette, grouped: Transport, Sensors, Environment (ADR-0013 taxonomy). */
+/** The palette, grouped: Transport, Sensors, Environment (ADR-0013 taxonomy).
+ *  Incline / decline / merge and the photo-eye / scanner sensors stay in the schema
+ *  (so saved layouts still load) but are kept off the palette for now. */
 export const PALETTE_GROUPS: readonly PaletteGroup[] = [
   {
     title: 'Transport',
-    items: [
-      tile('straight-belt'),
-      tile('curved-belt'),
-      tile('u-belt'),
-      tile('incline'),
-      tile('decline'),
-      tile('merge'),
-    ],
+    items: [tile('straight-belt'), tile('curved-belt'), tile('u-belt')],
   },
   {
     title: 'Sensors',
-    items: [tile('mp-sensor'), tile('photo-eye'), tile('scanner')],
+    items: [tile('mp-sensor')],
   },
   {
     title: 'Environment',
@@ -63,9 +58,10 @@ export const PALETTE_GROUPS: readonly PaletteGroup[] = [
   },
 ]
 
-/** Per-kind label + icon lookups, derived once from the palette. */
+/** Per-kind label + icon lookups, keyed over every kind so imported layouts
+ *  (including kinds not currently on the palette) always resolve a label + icon. */
 const KIND_META = Object.fromEntries(
-  PALETTE_GROUPS.flatMap((group) => group.items.map((item) => [item.kind, item])),
+  (Object.keys(KIND_LABELS) as ComponentKind[]).map((kind) => [kind, tile(kind)]),
 ) as Record<ComponentKind, PaletteItem>
 
 /** Display label for a component kind, e.g. `Straight Belt`. */
@@ -104,7 +100,7 @@ export function defaultLayout(): CanvasLayout {
     label: 'Inbound Belt',
     position: { x: 120, y: 220 },
     rotation: 0,
-    geometry: { lengthMeters: 5, widthMeters: 0.6, direction: 'east' },
+    geometry: { lengthMeters: 5, widthMeters: 1, direction: 'east' },
     ports: [
       { id: 'belt-1:in', role: 'in' },
       { id: 'belt-1:out', role: 'out' },
@@ -118,7 +114,7 @@ export function defaultLayout(): CanvasLayout {
     label: 'Corner',
     position: { x: 330, y: 220 },
     rotation: 0,
-    geometry: { lengthMeters: 1.2, widthMeters: 0.6, curveAngleDeg: 90, direction: 'east' },
+    geometry: { lengthMeters: 1.2, widthMeters: 1, curveAngleDeg: 90, direction: 'east' },
     ports: [
       { id: 'curve-2:in', role: 'in' },
       { id: 'curve-2:out', role: 'out' },
@@ -130,9 +126,9 @@ export function defaultLayout(): CanvasLayout {
     id: 'mp-10',
     kind: 'mp-sensor',
     label: 'MP Sensor',
-    position: { x: 288, y: 224 },
+    position: { x: 268, y: 220 },
     rotation: 0,
-    geometry: { lengthMeters: 0.4, widthMeters: 0.4 },
+    geometry: { lengthMeters: 1, widthMeters: 1 },
     ports: [],
     sensor: {
       telegramTypeId: 'MP',
@@ -164,6 +160,7 @@ export function defaultLayout(): CanvasLayout {
     ],
     binSource: {
       id: 'src-1',
+      spacingMeters: 0.3,
       types: [
         { typeId: 'TOTE', color: '#3b82f6', count: 20 },
         { typeId: 'CARTON', color: '#f59e0b', count: 10 },

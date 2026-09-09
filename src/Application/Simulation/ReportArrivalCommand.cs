@@ -8,7 +8,21 @@ namespace PlcTelegramSimulator.Application.Simulation;
 /// <see cref="ISimulationEngine"/> and returns whether it was accepted; the MP telegram is sent and
 /// the TO awaited asynchronously by the loop.
 /// </summary>
-public sealed record ReportArrivalCommand(string TransportUnitId, string MessagePointId)
+/// <param name="TransportUnitId">The bin's transport-unit id.</param>
+/// <param name="MessagePointId">The message point the bin reached.</param>
+/// <param name="TelegramId">
+/// The frontend-minted correlation id encoded into <paramref name="Telegram"/> (ADR-0009), or
+/// <see langword="null"/> to let the backend allocate one (interim path).
+/// </param>
+/// <param name="Telegram">
+/// The finished frontend-encoded telegram to relay verbatim (ADR-0009), or <see langword="null"/> to
+/// fall back to the interim MP string codec.
+/// </param>
+public sealed record ReportArrivalCommand(
+    string TransportUnitId,
+    string MessagePointId,
+    int? TelegramId = null,
+    EncodedMpTelegram? Telegram = null)
     : IRequest<ArrivalAccepted>;
 
 /// <summary>The outcome of enqueuing a <see cref="ReportArrivalCommand"/>.</summary>
@@ -20,7 +34,8 @@ internal sealed class ReportArrivalCommandHandler(ISimulationEngine engine)
 {
     public Task<ArrivalAccepted> Handle(ReportArrivalCommand request, CancellationToken cancellationToken)
     {
-        var accepted = engine.TryReportArrival(request.TransportUnitId, request.MessagePointId);
+        var accepted = engine.TryReportArrival(
+            request.TransportUnitId, request.MessagePointId, request.TelegramId, request.Telegram);
         return Task.FromResult(new ArrivalAccepted(accepted));
     }
 }

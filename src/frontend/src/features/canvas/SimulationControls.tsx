@@ -5,27 +5,39 @@ import { Icon } from '@/components/ui/Icon'
 interface SimulationControlsProps {
   status: SimStatus
   speed: SimSpeed
+  /** Whether the bin-source pool has any bins configured (gates a fresh start). */
+  canStart: boolean
   onPlay: () => void
   onPause: () => void
   onStop: () => void
   onSpeedChange: (speed: SimSpeed) => void
-  onSpawnBin: () => void
+  /** Whether the local demo resolver is on (fabricates transport orders with no backend). */
+  demoResponses: boolean
+  /** Toggle the local demo resolver. */
+  onDemoResponsesChange: (value: boolean) => void
+  /** When true a backend is configured, so the demo toggle is disabled (live client wins). */
+  demoDisabled?: boolean
 }
 
 const ROUND_BTN =
   'grid h-10 w-10 place-items-center rounded-full bg-surface-variant transition-colors hover:bg-surface-bright disabled:cursor-not-allowed disabled:opacity-40'
 
-/** Bottom control bar overlaying the stage: transport, speed, and bin spawning. */
+/** Bottom control bar overlaying the stage: transport + speed. Bins release from the pool. */
 export function SimulationControls({
   status,
   speed,
+  canStart,
   onPlay,
   onPause,
   onStop,
   onSpeedChange,
-  onSpawnBin,
+  demoResponses,
+  onDemoResponsesChange,
+  demoDisabled = false,
 }: SimulationControlsProps) {
   const running = status === 'running'
+  // A fresh start needs bins in the pool; resuming from paused is always allowed.
+  const playDisabled = running || (status === 'idle' && !canStart)
 
   return (
     <div
@@ -37,9 +49,14 @@ export function SimulationControls({
         <button
           type="button"
           onClick={onPlay}
-          disabled={running}
+          disabled={playDisabled}
           aria-label="Play simulation"
           aria-pressed={running}
+          title={
+            status === 'idle' && !canStart
+              ? 'Add bins to the Bin Source to start the simulation'
+              : undefined
+          }
           className={`${ROUND_BTN} text-on-surface`}
         >
           <Icon name="play_arrow" filled />
@@ -97,14 +114,25 @@ export function SimulationControls({
 
       <div className="h-6 w-px bg-outline-variant" />
 
-      <button
-        type="button"
-        onClick={onSpawnBin}
-        className="flex items-center gap-2 rounded-full bg-primary px-4 py-2 font-label-xs text-label-xs uppercase text-on-primary transition-colors hover:bg-primary-fixed-dim"
+      <label
+        className={`flex items-center gap-2 font-label-xs text-label-xs uppercase text-on-surface-variant ${
+          demoDisabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
+        }`}
+        title={
+          demoDisabled
+            ? 'A backend is connected — the live client provides real transport orders.'
+            : 'When off (and no backend connected), bins hold at message points awaiting a real transport-order response.'
+        }
       >
-        <Icon name="add_box" className="text-[16px]" />
-        Spawn Bin
-      </button>
+        <input
+          type="checkbox"
+          checked={demoResponses}
+          disabled={demoDisabled}
+          onChange={(event) => onDemoResponsesChange(event.target.checked)}
+          className="h-4 w-4 accent-primary disabled:cursor-not-allowed"
+        />
+        Simulate responses (demo)
+      </label>
     </div>
   )
 }

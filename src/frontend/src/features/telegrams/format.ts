@@ -1,4 +1,4 @@
-import type { DataType, TelegramField, TelegramFieldGroup, TelegramType } from './types'
+import type { DataType, PadSide, TelegramField, TelegramFieldGroup, TelegramType } from './types'
 
 /** Upper bound on a single field's width (bytes), to keep previews bounded. */
 export const MAX_FIELD_LENGTH = 1024
@@ -54,13 +54,15 @@ export function encodeField(field: TelegramField): PreviewByte[] {
   if (length === 0) return []
   if (field.auto) return unknown(length)
 
+  const padByte = padByteFrom(field.padValue)
+  const padSide = field.padSide ?? 'right'
   switch (field.dataType) {
     case 'HEX':
-      return encodeHex(field.defaultValue, length)
+      return encodeHex(field.defaultValue, length, padByte, padSide)
     case 'INT':
       return encodeInt(field.defaultValue, length)
     case 'STRING':
-      return encodeString(field.defaultValue, length)
+      return encodeString(field.defaultValue, length, padByte, padSide)
     default:
       return unknown(length)
   }
@@ -70,10 +72,44 @@ function unknown(length: number): PreviewByte[] {
   return Array.from({ length }, () => null)
 }
 
-function fit(bytes: PreviewByte[], length: number): PreviewByte[] {
+/**
+ * Whether a field uses configurable character padding. `STRING` and `HEX` fill a
+ * short value with the pad character; `INT` is numeric (big-endian) and `auto`
+ * (computed) fields have no editable value, so neither pads. Kept in one place so
+ * the encoder, validation, and the field editor stay in agreement as data types
+ * grow (a future non-INT type opts in here once, not in three spots).
+ */
+export function fieldSupportsPadding(field: Pick<TelegramField, 'dataType' | 'auto'>): boolean {
+  return !field.auto && (field.dataType === 'STRING' || field.dataType === 'HEX')
+}
+
+/**
+ * Resolves a field's configured pad character to its fill byte: the first code
+ * point of {@link TelegramField.padValue}, or `0x00` when empty/unset (the
+ * historic NUL fill). A character outside Latin-1 yields `null` (unresolved),
+ * so an invalid pad char shows as `??` in previews and is flagged by validation.
+ */
+function padByteFrom(padValue: string | undefined): PreviewByte {
+  if (!padValue) return 0
+  const code = padValue.codePointAt(0) ?? 0
+  return code > 0xff ? null : code
+}
+
+/**
+ * Fits `bytes` to exactly `length`: truncates the trailing bytes when too long,
+ * otherwise fills the shortfall with `padByte` on the chosen side (`right` by
+ * default). Right-padding with `0x00` reproduces the historic behaviour.
+ */
+function fit(
+  bytes: PreviewByte[],
+  length: number,
+  padByte: PreviewByte = 0,
+  padSide: PadSide = 'right',
+): PreviewByte[] {
   if (bytes.length === length) return bytes
   if (bytes.length > length) return bytes.slice(0, length)
-  return [...bytes, ...Array.from({ length: length - bytes.length }, () => 0 as PreviewByte)]
+  const fill = Array.from({ length: length - bytes.length }, () => padByte)
+  return padSide === 'left' ? [...fill, ...bytes] : [...bytes, ...fill]
 }
 
 function cleanHex(value: string): string {
@@ -84,14 +120,19 @@ function isValidHex(cleaned: string): boolean {
   return cleaned.length % 2 === 0 && (cleaned.length === 0 || /^[0-9a-fA-F]+$/.test(cleaned))
 }
 
-function encodeHex(value: string, length: number): PreviewByte[] {
+function encodeHex(
+  value: string,
+  length: number,
+  padByte: PreviewByte,
+  padSide: PadSide,
+): PreviewByte[] {
   const cleaned = cleanHex(value)
   if (!isValidHex(cleaned)) return unknown(length)
   const bytes: PreviewByte[] = []
   for (let i = 0; i < cleaned.length; i += 2) {
     bytes.push(Number.parseInt(cleaned.slice(i, i + 2), 16))
   }
-  return fit(bytes, length)
+  return fit(bytes, length, padByte, padSide)
 }
 
 function encodeInt(value: string, length: number): PreviewByte[] {
@@ -111,13 +152,18 @@ function encodeInt(value: string, length: number): PreviewByte[] {
   return bytes
 }
 
-function encodeString(value: string, length: number): PreviewByte[] {
+function encodeString(
+  value: string,
+  length: number,
+  padByte: PreviewByte,
+  padSide: PadSide,
+): PreviewByte[] {
   const bytes: PreviewByte[] = []
   for (const char of value) {
     const code = char.codePointAt(0) ?? 0
     bytes.push(code > 0xff ? null : code)
   }
-  return fit(bytes, length)
+  return fit(bytes, length, padByte, padSide)
 }
 
 /**
@@ -210,6 +256,7 @@ export interface FieldErrors {
   name?: string
   length?: string
   defaultValue?: string
+  padValue?: string
 }
 
 /** Validates one field against its siblings (for uniqueness). */
@@ -241,7 +288,27 @@ export function validateField(
     if (valueError) errors.defaultValue = valueError
   }
 
+  // Padding applies only where it takes effect (STRING/HEX, non-auto); this
+  // matches the UI, which hides the pad controls for numeric/computed fields.
+  if (fieldSupportsPadding(field)) {
+    const padError = validatePadValue(field.padValue)
+    if (padError) errors.padValue = padError
+  }
+
   return errors
+}
+
+/**
+ * Validates a field's pad character: it must be a single Latin-1 character (code
+ * point ≤ 0xff). Empty/unset is allowed (it means the `0x00` NUL fill). A space
+ * is a valid pad character.
+ */
+function validatePadValue(padValue: string | undefined): string | undefined {
+  if (padValue === undefined || padValue === '') return undefined
+  const chars = [...padValue]
+  if (chars.length > 1) return 'Padding must be a single character'
+  if ((chars[0].codePointAt(0) ?? 0) > 0xff) return 'Use a single-byte (Latin-1) character'
+  return undefined
 }
 
 function validateDefaultValue(

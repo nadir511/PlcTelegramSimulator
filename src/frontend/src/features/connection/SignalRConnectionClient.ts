@@ -74,9 +74,9 @@ export class SignalRConnectionClient implements ConnectionClient {
     }
   }
 
-  async start(config: ListenerConfig): Promise<void> {
+  async start(config: ListenerConfig, endOfTelegram: string): Promise<void> {
     await this.ensureHub()
-    await this.post('/api/connection/start', config)
+    await this.post('/api/connection/start', { ...config, endOfTelegram })
   }
 
   async stop(): Promise<void> {

@@ -1,22 +1,38 @@
+import { useState } from 'react'
+import type { ReactNode } from 'react'
 import { TELEGRAM_TYPE_OPTIONS, kindIcon, kindLabel, telegramFieldNames } from './defaults'
 import { hasCurveAngle, isSensorKind, isTransportKind } from './layout'
-import type { Component, ConveyorState, Direction, FieldBindingSource } from './types'
+import type {
+  BinSource,
+  BinType,
+  Component,
+  ConveyorState,
+  Direction,
+  FieldBindingSource,
+} from './types'
 import { Icon } from '@/components/ui/Icon'
 
 interface PropertyInspectorProps {
   component: Component | null
   draft: Component | null
   isDirty: boolean
+  /** The bin-source pool (edited immediately, outside the draft Apply/Revert flow). */
+  binSource: BinSource
   onChange: (patch: Partial<Component>) => void
   onApply: () => void
   onRevert: () => void
   onDelete: (id: string) => void
   onClose: () => void
+  onAddBinType: () => void
+  onUpdateBinType: (index: number, patch: Partial<BinType>) => void
+  onRemoveBinType: (index: number) => void
+  onUpdateBinSpacing: (meters: number) => void
 }
 
 const CONVEYOR_STATES: readonly ConveyorState[] = ['Running', 'Stopped', 'Jammed', 'Maintenance']
 const DIRECTIONS: readonly Direction[] = ['north', 'east', 'south', 'west']
 const BINDING_SOURCES: readonly FieldBindingSource[] = ['mpId', 'bin.tuId']
+const ORIENTATIONS: readonly number[] = [0, 90, 180, 270]
 
 const FIELD =
   'w-full rounded border border-outline-variant bg-surface-container p-2 font-data-mono text-[11px] text-on-surface focus:border-secondary focus:outline-none focus:ring-1 focus:ring-secondary'
@@ -38,11 +54,16 @@ export function PropertyInspector({
   component,
   draft,
   isDirty,
+  binSource,
   onChange,
   onApply,
   onRevert,
   onDelete,
   onClose,
+  onAddBinType,
+  onUpdateBinType,
+  onRemoveBinType,
+  onUpdateBinSpacing,
 }: PropertyInspectorProps) {
   return (
     <aside
@@ -89,11 +110,21 @@ export function PropertyInspector({
             </div>
 
             <div className="flex flex-col gap-4">
+              <OrientationField draft={draft} onChange={onChange} />
               {isTransportKind(component.kind) ? (
                 <TransportFields draft={draft} onChange={onChange} />
               ) : null}
               {isSensorKind(component.kind) ? (
                 <SensorFields draft={draft} onChange={onChange} />
+              ) : null}
+              {component.kind === 'bin-source' ? (
+                <BinsCard
+                  binSource={binSource}
+                  onAddBinType={onAddBinType}
+                  onUpdateBinType={onUpdateBinType}
+                  onRemoveBinType={onRemoveBinType}
+                  onUpdateBinSpacing={onUpdateBinSpacing}
+                />
               ) : null}
             </div>
           </div>
@@ -124,6 +155,75 @@ export function PropertyInspector({
         </div>
       )}
     </aside>
+  )
+}
+
+/** A shared orientation control (rotate 0/90/180/270 + free numeric) for any component. */
+function OrientationField({
+  draft,
+  onChange,
+}: {
+  draft: Component
+  onChange: (patch: Partial<Component>) => void
+}) {
+  const rotation = ((draft.rotation % 360) + 360) % 360
+  return (
+    <div className="flex flex-col gap-1">
+      <span className={LABEL}>Orientation</span>
+      <div className="flex gap-1">
+        {ORIENTATIONS.map((angle) => (
+          <button
+            key={angle}
+            type="button"
+            aria-pressed={rotation === angle}
+            onClick={() => onChange({ rotation: angle })}
+            className={`flex-1 rounded border py-1 font-data-mono text-[11px] transition-colors ${
+              rotation === angle
+                ? 'border-secondary bg-surface-variant text-on-surface'
+                : 'border-outline-variant text-on-surface-variant hover:bg-surface-variant'
+            }`}
+          >
+            {angle}°
+          </button>
+        ))}
+      </div>
+      <input
+        id="prop-rotation"
+        aria-label="Rotation (deg)"
+        type="number"
+        value={draft.rotation}
+        step={15}
+        onChange={(event) => onChange({ rotation: toNumber(event.target.value, draft.rotation) })}
+        className={`${FIELD} mt-1`}
+      />
+    </div>
+  )
+}
+
+/** A collapsible titled card; used to keep the (potentially many) sensor fields tidy. */
+function CollapsibleCard({
+  title,
+  defaultOpen = true,
+  children,
+}: {
+  title: string
+  defaultOpen?: boolean
+  children: ReactNode
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+  return (
+    <div className="overflow-hidden rounded border border-outline-variant">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        className="flex w-full items-center justify-between bg-surface-container-high px-3 py-2 text-left"
+      >
+        <span className={LABEL}>{title}</span>
+        <Icon name={open ? 'expand_less' : 'expand_more'} className="text-[16px] text-on-surface-variant" />
+      </button>
+      {open ? <div className="flex flex-col gap-4 p-3">{children}</div> : null}
+    </div>
   )
 }
 
@@ -252,7 +352,7 @@ function SensorFields({
 }) {
   const sensor = draft.sensor ?? { telegramTypeId: 'MP', mpId: '', fieldBindings: [] }
   const telegramFields = telegramFieldNames(sensor.telegramTypeId)
-  const fieldOptions = Array.from(
+  const fieldSuggestions = Array.from(
     new Set([...telegramFields, ...sensor.fieldBindings.map((binding) => binding.field)]),
   )
 
@@ -265,60 +365,72 @@ function SensorFields({
 
   return (
     <>
-      <div className="flex flex-col gap-1">
-        <label htmlFor="prop-telegram-type" className={LABEL}>
-          Telegram Type
-        </label>
-        <select
-          id="prop-telegram-type"
-          value={sensor.telegramTypeId}
-          onChange={(event) => onChange({ sensor: { ...sensor, telegramTypeId: event.target.value } })}
-          className={SELECT}
-        >
-          {TELEGRAM_TYPE_OPTIONS.map((code) => (
-            <option key={code} value={code}>
-              {code}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div className="flex flex-col gap-1">
-        <label htmlFor="prop-mp-id" className={LABEL}>
-          MP ID
-        </label>
-        <input
-          id="prop-mp-id"
-          type="text"
-          value={sensor.mpId}
-          spellCheck={false}
-          onChange={(event) => onChange({ sensor: { ...sensor, mpId: event.target.value } })}
-          className={FIELD}
+      <CollapsibleCard title="Sensor">
+        <NumberField
+          id="prop-sensor-size"
+          label="Size (m)"
+          value={draft.geometry.widthMeters}
+          step={0.1}
+          min={0}
+          onChange={(value) =>
+            onChange({ geometry: { ...draft.geometry, widthMeters: value } })
+          }
         />
-      </div>
 
-      <div className="my-1 h-px w-full bg-outline-variant" />
+        <div className="flex flex-col gap-1">
+          <label htmlFor="prop-telegram-type" className={LABEL}>
+            Telegram Type
+          </label>
+          <select
+            id="prop-telegram-type"
+            value={sensor.telegramTypeId}
+            onChange={(event) => onChange({ sensor: { ...sensor, telegramTypeId: event.target.value } })}
+            className={SELECT}
+          >
+            {TELEGRAM_TYPE_OPTIONS.map((code) => (
+              <option key={code} value={code}>
+                {code}
+              </option>
+            ))}
+          </select>
+        </div>
 
-      <div className="flex flex-col gap-2">
-        <span className={LABEL}>Field Bindings</span>
+        <div className="flex flex-col gap-1">
+          <label htmlFor="prop-mp-id" className={LABEL}>
+            MP ID
+          </label>
+          <input
+            id="prop-mp-id"
+            type="text"
+            value={sensor.mpId}
+            spellCheck={false}
+            onChange={(event) => onChange({ sensor: { ...sensor, mpId: event.target.value } })}
+            className={FIELD}
+          />
+        </div>
+      </CollapsibleCard>
+
+      <CollapsibleCard title="Field Bindings">
+        <datalist id="prop-binding-fields">
+          {fieldSuggestions.map((name) => (
+            <option key={name} value={name} />
+          ))}
+        </datalist>
         {sensor.fieldBindings.length === 0 ? (
           <p className="font-body-sm text-body-sm text-on-surface-variant/70">No field bindings.</p>
         ) : (
           <ul className="flex flex-col gap-2">
             {sensor.fieldBindings.map((binding, index) => (
               <li key={index} className="flex items-center gap-2">
-                <select
+                <input
+                  type="text"
                   aria-label={`Binding ${index + 1} field`}
                   value={binding.field}
+                  list="prop-binding-fields"
+                  spellCheck={false}
                   onChange={(event) => updateBinding(index, { field: event.target.value })}
-                  className={`${SELECT} flex-1`}
-                >
-                  {fieldOptions.map((name) => (
-                    <option key={name} value={name}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
+                  className={`${FIELD} flex-1`}
+                />
                 <Icon name="west" className="text-[16px] text-on-surface-variant" />
                 <select
                   aria-label={`Binding ${index + 1} source`}
@@ -338,28 +450,127 @@ function SensorFields({
             ))}
           </ul>
         )}
+      </CollapsibleCard>
+
+      <CollapsibleCard title="Telegram Fields" defaultOpen={false}>
+        <div className="overflow-hidden rounded border border-outline-variant">
+          <table className="w-full text-left font-data-mono text-[11px]">
+            <caption className="sr-only">Telegram fields</caption>
+            <thead className="border-b border-outline-variant bg-surface-container-high">
+              <tr>
+                <th scope="col" className="p-2 font-normal text-on-surface-variant">
+                  Field
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {telegramFields.map((name) => (
+                <tr key={name} className="border-b border-outline-variant/50 last:border-b-0">
+                  <td className="p-2 text-on-surface">{name}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </CollapsibleCard>
+    </>
+  )
+}
+
+/**
+ * The Bin Source pool editor: add/remove bin types, each with a type id, a colour,
+ * and how many bins of that type the source holds. Edits apply immediately to the
+ * global `layout.binSource` (not the draft Apply/Revert flow), and the total gates
+ * the start-simulation button.
+ */
+function BinsCard({
+  binSource,
+  onAddBinType,
+  onUpdateBinType,
+  onRemoveBinType,
+  onUpdateBinSpacing,
+}: {
+  binSource: BinSource
+  onAddBinType: () => void
+  onUpdateBinType: (index: number, patch: Partial<BinType>) => void
+  onRemoveBinType: (index: number) => void
+  onUpdateBinSpacing: (meters: number) => void
+}) {
+  const total = binSource.types.reduce((sum, type) => sum + Math.max(0, Math.floor(type.count)), 0)
+  return (
+    <CollapsibleCard title="Bins">
+      <NumberField
+        id="prop-bin-spacing"
+        label="Distance between bins (m)"
+        value={binSource.spacingMeters ?? 0.3}
+        step={0.1}
+        min={0}
+        onChange={(value) => onUpdateBinSpacing(Math.max(0, value))}
+      />
+      <div className="flex items-center justify-between">
+        <span className="font-body-sm text-body-sm text-on-surface-variant">
+          {total} bin{total === 1 ? '' : 's'} in pool
+        </span>
+        <button
+          type="button"
+          onClick={onAddBinType}
+          aria-label="Add bin type"
+          className="flex items-center gap-1 rounded border border-outline-variant px-2 py-1 text-[11px] text-on-surface transition-colors hover:bg-surface-variant"
+        >
+          <Icon name="add" className="text-[14px]" />
+          Add type
+        </button>
       </div>
 
-      <div className="overflow-hidden rounded border border-outline-variant">
-        <table className="w-full text-left font-data-mono text-[11px]">
-          <caption className="sr-only">Telegram fields</caption>
-          <thead className="border-b border-outline-variant bg-surface-container-high">
-            <tr>
-              <th scope="col" className="p-2 font-normal text-on-surface-variant">
-                Field
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {telegramFields.map((name) => (
-              <tr key={name} className="border-b border-outline-variant/50 last:border-b-0">
-                <td className="p-2 text-on-surface">{name}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </>
+      {binSource.types.length === 0 ? (
+        <p className="font-body-sm text-body-sm text-on-surface-variant/70">
+          No bin types yet — add one to enable the simulation.
+        </p>
+      ) : (
+        <ul className="flex flex-col gap-3">
+          {binSource.types.map((type, index) => (
+            <li
+              key={index}
+              className="flex flex-col gap-2 rounded border border-outline-variant bg-surface-container p-2"
+            >
+              <div className="flex items-center gap-2">
+                <input
+                  type="color"
+                  aria-label={`Bin type ${index + 1} colour`}
+                  value={type.color}
+                  onChange={(event) => onUpdateBinType(index, { color: event.target.value })}
+                  className="h-8 w-8 shrink-0 cursor-pointer rounded border border-outline-variant bg-transparent p-0"
+                />
+                <input
+                  type="text"
+                  aria-label={`Bin type ${index + 1} id`}
+                  value={type.typeId}
+                  spellCheck={false}
+                  onChange={(event) => onUpdateBinType(index, { typeId: event.target.value })}
+                  className={`${FIELD} flex-1`}
+                />
+                <button
+                  type="button"
+                  onClick={() => onRemoveBinType(index)}
+                  aria-label={`Remove bin type ${index + 1}`}
+                  className="shrink-0 text-on-surface-variant transition-colors hover:text-error"
+                >
+                  <Icon name="delete" className="text-[16px]" />
+                </button>
+              </div>
+              <NumberField
+                id={`prop-bin-count-${index}`}
+                label="Number of bins"
+                value={type.count}
+                step={1}
+                min={0}
+                onChange={(value) => onUpdateBinType(index, { count: Math.max(0, Math.round(value)) })}
+              />
+            </li>
+          ))}
+        </ul>
+      )}
+    </CollapsibleCard>
   )
 }
 
@@ -372,7 +583,6 @@ interface NumberFieldProps {
   max?: number
   onChange: (value: number) => void
 }
-
 /** A labelled numeric input that coerces its value to a finite number. */
 function NumberField({ id, label, value, step, min, max, onChange }: NumberFieldProps) {
   return (

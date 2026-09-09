@@ -1,7 +1,10 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ConnectionPage } from './ConnectionPage'
 import { DEFAULT_CONFIG } from './defaults'
+import { persistConnection } from './persistence'
+import { DEFAULT_END_OF_TELEGRAM, SEED_TELEGRAM_TYPES } from '../telegrams/defaults'
+import { persistTelegrams } from '../telegrams/persistence'
 import type {
   ConnectionClient,
   ConnectionEvent,
@@ -16,14 +19,16 @@ class FakeConnectionClient implements ConnectionClient {
   private readonly listeners = new Set<(event: ConnectionEvent) => void>()
 
   readonly startCalls: ListenerConfig[] = []
+  readonly startEotCalls: string[] = []
   stopCalls = 0
 
   getSnapshot(): ConnectionSnapshot {
     return { status: this.status, error: this.error }
   }
 
-  start(config: ListenerConfig): Promise<void> {
+  start(config: ListenerConfig, endOfTelegram: string): Promise<void> {
     this.startCalls.push(config)
+    this.startEotCalls.push(endOfTelegram)
     return Promise.resolve()
   }
 
@@ -56,6 +61,9 @@ class FakeConnectionClient implements ConnectionClient {
 }
 
 describe('ConnectionPage', () => {
+  beforeEach(() => localStorage.clear())
+  afterEach(() => localStorage.clear())
+
   it('starts the listener with the default config', () => {
     const client = new FakeConnectionClient()
     render(<ConnectionPage client={client} />)
@@ -65,6 +73,28 @@ describe('ConnectionPage', () => {
 
     expect(client.startCalls).toHaveLength(1)
     expect(client.startCalls[0]).toEqual(DEFAULT_CONFIG)
+    // With no saved registry, the default terminator '~' is threaded to the backend.
+    expect(client.startEotCalls[0]).toBe(DEFAULT_END_OF_TELEGRAM)
+  })
+
+  it('starts with the End-of-Telegram terminator from the telegram registry', () => {
+    persistTelegrams(SEED_TELEGRAM_TYPES, '!')
+    const client = new FakeConnectionClient()
+    render(<ConnectionPage client={client} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /start listener/i }))
+
+    expect(client.startEotCalls[0]).toBe('!')
+  })
+
+  it('falls back to the default terminator when the registry EOT is empty', () => {
+    persistTelegrams(SEED_TELEGRAM_TYPES, '')
+    const client = new FakeConnectionClient()
+    render(<ConnectionPage client={client} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /start listener/i }))
+
+    expect(client.startEotCalls[0]).toBe(DEFAULT_END_OF_TELEGRAM)
   })
 
   it('reflects status changes and locks the config while running', () => {
@@ -123,5 +153,27 @@ describe('ConnectionPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /^send$/i }))
 
     expect(client.sentPayloads).toEqual([[1, 2]])
+  })
+
+  it('hydrates the config from storage and starts with it', () => {
+    persistConnection({ ...DEFAULT_CONFIG, sendPort: 4000, receivePort: 4001 })
+    const client = new FakeConnectionClient()
+    render(<ConnectionPage client={client} />)
+
+    expect(screen.getByLabelText('Send Port')).toHaveValue(4000)
+
+    fireEvent.click(screen.getByRole('button', { name: /start listener/i }))
+    expect(client.startCalls[0]).toMatchObject({ sendPort: 4000, receivePort: 4001 })
+  })
+
+  it('persists config edits so a remount restores them', () => {
+    const client = new FakeConnectionClient()
+    const { unmount } = render(<ConnectionPage client={client} />)
+
+    fireEvent.change(screen.getByLabelText('Send Port'), { target: { value: '4321' } })
+    unmount()
+
+    render(<ConnectionPage client={new FakeConnectionClient()} />)
+    expect(screen.getByLabelText('Send Port')).toHaveValue(4321)
   })
 })
